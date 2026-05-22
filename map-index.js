@@ -27,7 +27,10 @@
     let osmEntrancesCacheKey = null;
     let osmEntrancesLoading = false;
     let selectedOsmEntranceId = null;
-    let entranceUserAdjusted = false;
+    let entranceSnapDetached = false;
+
+    const ENTRANCE_SNAP_METERS = 12;
+    const ENTRANCE_DETACH_METERS = 26;
 
     const markers = {};
     const routeLines = {};
@@ -374,6 +377,72 @@
         updateRoutes();
     }
 
+    function nearestOsmEntrance(latlng) {
+        const entrances = osmEntrancesCache;
+        if (!entrances?.length) return null;
+
+        let best = null;
+        let bestDist = Infinity;
+        entrances.forEach((entrance) => {
+            const dist = latlng.distanceTo(L.latLng(entrance.lat, entrance.lng));
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = entrance;
+            }
+        });
+        return best ? { entrance: best, distance: bestDist } : null;
+    }
+
+    function snapEntranceToOsmNode(entrance) {
+        setEntranceFromLatLng(entrance.lat, entrance.lng);
+        selectedOsmEntranceId = entrance.id;
+        entranceSnapDetached = false;
+        updateOsmEntranceMarkerStyles();
+    }
+
+    function snapEntranceToOutlineOnly(marker) {
+        const snapped = closestPointOnBuildingOutline(marker.getLatLng());
+        marker.setLatLng(snapped);
+        points.entrance = [snapped.lat, snapped.lng];
+        lastValidDrag.entrance = snapped;
+    }
+
+    function constrainEntranceMarker(marker) {
+        const latlng = marker.getLatLng();
+        const nearest = nearestOsmEntrance(latlng);
+
+        if (nearest && nearest.distance <= ENTRANCE_SNAP_METERS) {
+            snapEntranceToOsmNode(nearest.entrance);
+            lastValidDrag.entrance = markers.entrance.getLatLng();
+            return;
+        }
+
+        if (!entranceSnapDetached) {
+            let reference = null;
+            if (selectedOsmEntranceId && osmEntrancesCache) {
+                reference =
+                    osmEntrancesCache.find((entrance) => entrance.id === selectedOsmEntranceId) ||
+                    null;
+            }
+            if (!reference && nearest) reference = nearest.entrance;
+
+            if (reference) {
+                const refDist = latlng.distanceTo(L.latLng(reference.lat, reference.lng));
+                if (refDist > ENTRANCE_DETACH_METERS) {
+                    entranceSnapDetached = true;
+                    selectedOsmEntranceId = null;
+                    updateOsmEntranceMarkerStyles();
+                }
+            }
+        }
+
+        snapEntranceToOutlineOnly(marker);
+        if (entranceSnapDetached) {
+            selectedOsmEntranceId = null;
+            updateOsmEntranceMarkerStyles();
+        }
+    }
+
     function clearOsmEntranceMarkers() {
         osmEntranceMarkers.forEach((marker) => {
             if (map.hasLayer(marker)) map.removeLayer(marker);
@@ -407,9 +476,7 @@
             });
             marker.tuptupOsmEntranceId = entrance.id;
             marker.on("click", () => {
-                selectedOsmEntranceId = entrance.id;
-                setEntranceFromLatLng(entrance.lat, entrance.lng);
-                updateOsmEntranceMarkerStyles();
+                snapEntranceToOsmNode(entrance);
             });
             marker.addTo(map);
             osmEntranceMarkers.push(marker);
@@ -430,12 +497,10 @@
     }
 
     function applyDefaultOsmEntrance(entrances) {
-        if (entranceUserAdjusted) return;
+        if (entranceSnapDetached) return;
         const main = pickMainOsmEntrance(entrances);
         if (!main) return;
-        selectedOsmEntranceId = main.id;
-        setEntranceFromLatLng(main.lat, main.lng);
-        updateOsmEntranceMarkerStyles();
+        snapEntranceToOsmNode(main);
     }
 
     function finishOsmEntrancesLoad(entrances) {
@@ -490,9 +555,7 @@
         }
 
         if (wizardStep === "entrance" && key === "entrance") {
-            const snapped = closestPointOnBuildingOutline(latlng);
-            marker.setLatLng(snapped);
-            lastValidDrag[key] = snapped;
+            constrainEntranceMarker(marker);
             return;
         }
 
@@ -528,12 +591,11 @@
             });
 
             marker.on("dragend", () => {
+                if (wizardStep === "entrance" && key === "entrance") {
+                    constrainEntranceMarker(marker);
+                }
                 const { lat, lng } = marker.getLatLng();
                 points[key] = [lat, lng];
-                if (key === "entrance") {
-                    selectedOsmEntranceId = null;
-                    entranceUserAdjusted = true;
-                }
                 updateOsmEntranceMarkerStyles();
                 updateRoutes();
             });
@@ -724,7 +786,11 @@
         }
 
         if (step === "entrance" && markers.entrance) {
-            snapEntranceToOutline(markers.entrance);
+            if (osmEntrancesCache?.length) {
+                constrainEntranceMarker(markers.entrance);
+            } else {
+                snapEntranceToOutline(markers.entrance);
+            }
             loadOsmEntrances();
         } else {
             hideOsmEntrances();
@@ -799,7 +865,7 @@
         osmEntrancesCache = null;
         osmEntrancesCacheKey = null;
         selectedOsmEntranceId = null;
-        entranceUserAdjusted = false;
+        entranceSnapDetached = false;
         hideOsmEntrances();
         applyBuildingOutline(building.outline);
         loadOsmEntrances();
