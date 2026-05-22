@@ -74,7 +74,7 @@
     }
 
     function prepareMapForPrint() {
-        window.TupTupMap?.setWizardStep("destination");
+        window.TupTupMap?.setWizardStep("print");
         window.TupTupMap?.fitMapView();
 
         return new Promise((resolve) => {
@@ -122,7 +122,7 @@
             syncPrintNotes();
             syncPrintDeliveryFloor();
             applyPrintFloorLabels();
-            window.TupTupMap?.setWizardStep("destination");
+            window.TupTupMap?.setWizardStep("print");
             window.TupTupMap?.fitMapView();
         }
     });

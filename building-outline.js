@@ -286,11 +286,17 @@
         const spec = parseOsmFromPage();
         if (!spec) return null;
 
-        try {
-            const building = await fetchOutline(spec);
-            if (building) return building;
-        } catch (error) {
-            console.warn("[TupTup] Nie udało się pobrać danych budynku z Overpass:", error);
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+                const building = await fetchOutline(spec);
+                if (building) return building;
+            } catch (error) {
+                if (attempt === 0) {
+                    await new Promise((r) => setTimeout(r, 600));
+                    continue;
+                }
+                console.warn("[TupTup] Nie udało się pobrać danych budynku z Overpass:", error);
+            }
         }
 
         return null;

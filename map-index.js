@@ -16,6 +16,8 @@
     };
     let markersInitialized = false;
     let wizardStarted = false;
+    let mapStarted = false;
+    let pendingBuilding = null;
 
     const markers = {};
     const routeLines = {};
@@ -40,6 +42,12 @@
             routes: ["parking-entrance", "entrance-delivery"],
             draggable: ["delivery"],
             active: "delivery",
+        },
+        print: {
+            markers: ["parking", "entrance", "delivery"],
+            routes: ["parking-entrance", "entrance-delivery"],
+            draggable: [],
+            active: null,
         },
     };
 
@@ -153,7 +161,14 @@
             markersInitialized = true;
         }
         ensureWizardStarted();
+        scheduleMapLayoutRetries();
+    }
+
+    function scheduleMapLayoutRetries() {
         refreshMapLayout();
+        requestAnimationFrame(refreshMapLayout);
+        setTimeout(refreshMapLayout, 120);
+        setTimeout(refreshMapLayout, 400);
     }
 
     function ensureWizardStarted() {
@@ -394,8 +409,8 @@
         });
     }
 
-    function getFitBounds() {
-        if (wizardStep !== "parking" || !hasBuilding()) return null;
+    function getParkingFitBounds() {
+        if (!hasBuilding()) return null;
 
         const center = buildingBounds.getCenter();
         const latSpan = Math.max((buildingBounds.getNorth() - buildingBounds.getSouth()) * 0.35, 0.00055);
@@ -406,8 +421,20 @@
         );
     }
 
+    function getFitBounds() {
+        if (wizardStep !== "parking" && wizardStep !== "print") return null;
+        return getParkingFitBounds();
+    }
+
+    function getBuildingPathElement() {
+        const fromLayer =
+            typeof buildingLayer.getElement === "function" ? buildingLayer.getElement() : null;
+        if (fromLayer?.isConnected) return fromLayer;
+        return map.getPane("overlayPane")?.querySelector("path.map-building-highlight") || null;
+    }
+
     function getBuildingScreenBox() {
-        const pathEl = map.getPane("overlayPane")?.querySelector("path.map-building-highlight");
+        const pathEl = getBuildingPathElement();
         if (!pathEl) return null;
 
         const mapRect = map.getContainer().getBoundingClientRect();
@@ -467,6 +494,28 @@
         setTimeout(fitBuildingFillView, 320);
     }
 
+    function centerBuildingInMapView() {
+        map.invalidateSize(true);
+        const box = getBuildingScreenBox();
+        if (!box) return false;
+
+        const size = map.getSize();
+        if (size.x < 10 || size.y < 10) return false;
+
+        const offsetX = size.x / 2 - box.centerX;
+        const offsetY = size.y / 2 - box.centerY;
+        if (Math.abs(offsetX) < 1 && Math.abs(offsetY) < 1) return true;
+
+        map.panBy(L.point(offsetX, offsetY), { animate: false });
+        return true;
+    }
+
+    function schedulePrintMapCenter() {
+        centerBuildingInMapView();
+        requestAnimationFrame(centerBuildingInMapView);
+        setTimeout(centerBuildingInMapView, 320);
+    }
+
     function fitMapView() {
         if (!hasBuilding()) {
             map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
@@ -485,6 +534,9 @@
         }
 
         map.fitBounds(bounds, { padding: [16, 16], maxZoom: PARKING_MAX_ZOOM });
+        if (wizardStep === "print") {
+            schedulePrintMapCenter();
+        }
     }
 
     function refreshMapLayout() {
@@ -582,16 +634,33 @@
         hasBuilding: () => hasBuilding(),
     };
 
+    function commitBuilding(building) {
+        if (!building?.outline?.length) return;
+        applyBuildingOutline(building.outline);
+        document.dispatchEvent(new CustomEvent("tuptup:building", { detail: building }));
+    }
+
+    function flushPendingBuilding() {
+        if (!pendingBuilding) return;
+        const building = pendingBuilding;
+        pendingBuilding = null;
+        commitBuilding(building);
+    }
+
     function startMap() {
-        map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
-        requestAnimationFrame(refreshMapLayout);
+        mapStarted = true;
+        if (!hasBuilding()) {
+            map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
+        }
+        flushPendingBuilding();
+        scheduleMapLayoutRetries();
         document.dispatchEvent(new CustomEvent("tuptup:map-ready"));
     }
 
     // Po DOMContentLoaded — wtedy skrypty `defer` (flow.js) są już wykonane.
     document.addEventListener("DOMContentLoaded", startMap);
 
-    window.addEventListener("load", refreshMapLayout);
+    window.addEventListener("load", scheduleMapLayoutRetries);
 
     if (outlineApi?.resolve) {
         outlineApi.resolve().then((building) => {
@@ -599,10 +668,8 @@
                 console.warn("[TupTup] Brak osm_id budynku — podaj ?osmid= lub building_osm_way.");
                 return;
             }
-            applyBuildingOutline(building.outline);
-            document.dispatchEvent(
-                new CustomEvent("tuptup:building", { detail: building })
-            );
+            pendingBuilding = building;
+            if (mapStarted) flushPendingBuilding();
         });
     }
 })();

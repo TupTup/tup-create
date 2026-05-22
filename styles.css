@@ -897,8 +897,8 @@ body {
         position: relative !important;
         flex: none !important;
         width: 100% !important;
-        height: 240px !important;
-        min-height: 240px !important;
+        height: calc(297mm / 2) !important;
+        min-height: calc(297mm / 2) !important;
         margin: 0 0 16px;
         border: 1px solid #ccc;
         page-break-inside: avoid;
@@ -1036,8 +1036,8 @@ body {
 }
 
 .is-printing .map-area {
-    height: 240px;
-    min-height: 240px;
+    height: calc(297mm / 2);
+    min-height: calc(297mm / 2);
     flex: none;
 }
 

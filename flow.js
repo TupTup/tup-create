@@ -280,6 +280,8 @@
         applyBuildingPlace({ name, address });
         buildFloorPicker({ minLevel, maxLevel });
         updateDeliveryFloorLabel();
+        const step = STEPS[stepIndex];
+        if (step) window.TupTupMap?.setWizardStep(step);
     });
 
     window.TupTupFlow = {
