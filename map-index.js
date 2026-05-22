@@ -73,7 +73,7 @@
         const activeClass = active ? " map-marker--active" : "";
         return L.divIcon({
             className: "map-marker-host",
-            html: `<div class="map-marker map-marker--${type} map-marker--draggable${activeClass}" role="img" aria-label="${label}">${label === "entry" ? "▯" : label}</div>`,
+            html: `<div class="map-marker map-marker--${type} map-marker--draggable${activeClass}" role="img" aria-label="${label}">${label === "entry" ? "" : label}</div>`,
             iconSize: [44, 58],
             iconAnchor: [22, 58],
         });

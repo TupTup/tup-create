@@ -8,33 +8,53 @@
     const tapThreshold = 8;
     const defaultCollapsed = sheet.hasAttribute("data-default-collapsed");
     const expandOnDropOnly = sheet.hasAttribute("data-expand-on-drop");
+    const desktopQuery = window.matchMedia("(min-width: 768px)");
 
     let startY = 0;
     let moved = false;
 
+    function isDesktop() {
+        return desktopQuery.matches;
+    }
+
     function setCollapsed(collapsed) {
+        if (isDesktop()) {
+            collapsed = false;
+        }
         sheet.classList.toggle(collapsedClass, collapsed);
         dragZone?.setAttribute("aria-expanded", String(!collapsed));
     }
 
-    if (defaultCollapsed) {
+    function applyLayoutMode() {
+        if (isDesktop()) {
+            setCollapsed(false);
+        } else if (defaultCollapsed) {
+            setCollapsed(true);
+        }
+    }
+
+    if (defaultCollapsed && !isDesktop()) {
         setCollapsed(true);
+    } else if (isDesktop()) {
+        setCollapsed(false);
     }
 
     dragZone?.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
+        if (isDesktop() || event.button !== 0) return;
         startY = event.clientY;
         moved = false;
         dragZone.setPointerCapture(event.pointerId);
     });
 
     dragZone?.addEventListener("pointermove", (event) => {
+        if (isDesktop()) return;
         if (Math.abs(event.clientY - startY) > tapThreshold) {
             moved = true;
         }
     });
 
     dragZone?.addEventListener("pointerup", (event) => {
+        if (isDesktop()) return;
         dragZone.releasePointerCapture(event.pointerId);
         const deltaY = event.clientY - startY;
 
@@ -59,6 +79,8 @@
     dragZone?.addEventListener("pointercancel", () => {
         moved = false;
     });
+
+    desktopQuery.addEventListener("change", applyLayoutMode);
 
     window.TupTupSheet = {
         collapse: () => setCollapsed(true),
