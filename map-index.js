@@ -25,7 +25,7 @@
     const wizardConfig = {
         parking: {
             markers: ["parking"],
-            routes: ["parking-entrance"],
+            routes: [],
             draggable: ["parking"],
             active: "parking",
         },
