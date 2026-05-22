@@ -137,6 +137,22 @@
     const buildingBounds = L.latLngBounds(buildingOutline);
     const lastValidDrag = {};
 
+    function getBuildingCloseBounds() {
+        const center = buildingBounds.getCenter();
+        const latSpan = Math.max(
+            (buildingBounds.getNorth() - buildingBounds.getSouth()) * 0.28,
+            0.00055
+        );
+        const lngSpan = Math.max(
+            (buildingBounds.getEast() - buildingBounds.getWest()) * 0.28,
+            0.0007
+        );
+        return L.latLngBounds(
+            [center.lat - latSpan, center.lng - lngSpan],
+            [center.lat + latSpan, center.lng + lngSpan]
+        );
+    }
+
     function pointInBuilding(latlng) {
         const x = latlng.lng;
         const y = latlng.lat;
@@ -308,7 +324,7 @@
             );
         }
 
-        return buildingBounds;
+        return getBuildingCloseBounds();
     }
 
     const viewByStep = {

@@ -49,6 +49,22 @@
     const layers = [buildingLayer];
     const buildingBounds = L.latLngBounds(buildingOutline);
 
+    function getBuildingCloseBounds() {
+        const center = buildingBounds.getCenter();
+        const latSpan = Math.max(
+            (buildingBounds.getNorth() - buildingBounds.getSouth()) * 0.28,
+            0.00055
+        );
+        const lngSpan = Math.max(
+            (buildingBounds.getEast() - buildingBounds.getWest()) * 0.28,
+            0.0007
+        );
+        return L.latLngBounds(
+            [center.lat - latSpan, center.lng - lngSpan],
+            [center.lat + latSpan, center.lng + lngSpan]
+        );
+    }
+
     function pointInBuilding(latlng) {
         const x = latlng.lng;
         const y = latlng.lat;
@@ -248,9 +264,9 @@
     const fitTargets = mode === "parking" ? L.featureGroup(layers) : buildingLayer;
 
     function getFitBounds() {
-        const bounds = fitTargets.getBounds();
-        if (mode !== "parking") return bounds;
+        if (mode !== "parking") return getBuildingCloseBounds();
 
+        const bounds = fitTargets.getBounds();
         const center = bounds.getCenter();
         const latSpan = Math.max((bounds.getNorth() - bounds.getSouth()) * 0.28, 0.00055);
         const lngSpan = Math.max((bounds.getEast() - bounds.getWest()) * 0.28, 0.0007);
@@ -292,7 +308,8 @@
     resetButton?.addEventListener("click", fitMapView);
 
     const resizeObserver = new ResizeObserver(() => {
-        map.invalidateSize();
+        map.invalidateSize(true);
+        fitMapView();
     });
     resizeObserver.observe(mapArea);
 

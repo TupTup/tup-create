@@ -44,11 +44,15 @@
     width: 28px;
     height: 28px;
     border-radius: 8px;
-    background: currentColor;
+    background: #333;
     color: #fff;
     font-weight: 900;
     font-size: 15px;
     line-height: 1;
+}
+
+.nav-item.active .icon-parking {
+    background: var(--strong);
 }
 
 * {
