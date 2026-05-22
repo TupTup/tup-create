@@ -40,6 +40,7 @@
     };
 
     const BUILDING_FILL_MAX_ZOOM = 22;
+    const BUILDING_FILL_INSET = 0.88;
     const PARKING_MAX_ZOOM = 19;
 
     const map = L.map(mapCanvas, {
@@ -367,7 +368,7 @@
         const box = getBuildingScreenBox();
         if (!box || box.width < 2 || box.height < 2) return false;
 
-        const fitRatio = Math.min(size.x / box.width, size.y / box.height) * 0.98;
+        const fitRatio = Math.min(size.x / box.width, size.y / box.height) * BUILDING_FILL_INSET;
         const targetZoom = Math.min(map.getZoom() + Math.log2(fitRatio), BUILDING_FILL_MAX_ZOOM);
         const targetCenter = map.containerPointToLatLng(L.point(box.centerX, box.centerY));
 

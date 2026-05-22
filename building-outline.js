@@ -28,7 +28,7 @@
         for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
             const [yi, xi] = outline[j];
             const [y, x] = outline[i];
-            area += (x - xi) * (yj + y);
+            area += (x - xi) * (yi + y);
         }
         return Math.abs(area);
     }
@@ -51,6 +51,12 @@
         if (raw == null || raw === "") return null;
 
         const value = String(raw).trim();
+
+        const fromUrl = value.match(/openstreetmap\.org\/(way|relation|node)\/(\d+)/i);
+        if (fromUrl) {
+            return { type: fromUrl[1].toLowerCase(), id: fromUrl[2], raw: value };
+        }
+
         const typed = value.match(/^(way|relation|node)[/:](\d+)$/i);
         if (typed) {
             return { type: typed[1].toLowerCase(), id: typed[2], raw: value };
@@ -64,7 +70,7 @@
         }
 
         if (/^\d+$/.test(value)) {
-            return { type: "way", id: value, raw: value };
+            return { type: "auto", id: value, raw: value };
         }
 
         return null;
@@ -85,15 +91,47 @@
 
         const hidden = document.querySelector('input[name="building_osm_way"]');
         if (hidden?.value) {
-            return parseOsmSpec(hidden.value) || { type: "way", id: hidden.value.trim(), raw: hidden.value };
+            return parseOsmSpec(hidden.value);
         }
 
         return null;
     }
 
     function buildOverpassQuery(type, id) {
+        if (type === "auto") {
+            return `[out:json][timeout:25];(way(${id});relation(${id}););out geom;`;
+        }
         const osmType = type === "relation" ? "relation" : "way";
         return `[out:json][timeout:25];${osmType}(${id});out geom;`;
+    }
+
+    function isBuildingElement(element) {
+        const tags = element?.tags;
+        if (!tags) return false;
+        if (tags.building) return true;
+        if (tags.type === "multipolygon" && tags.building !== undefined) return true;
+        return false;
+    }
+
+    function buildingScore(element) {
+        if (!element) return -1;
+        let score = 0;
+        if (element.type === "relation") score += 4;
+        if (isBuildingElement(element)) score += 8;
+        if (outlineFromElement(element)) score += 2;
+        return score;
+    }
+
+    function pickBuildingElement(elements, id) {
+        if (!Array.isArray(elements) || !elements.length) return null;
+
+        const matches = elements.filter(
+            (el) =>
+                (el.type === "way" || el.type === "relation") && String(el.id) === String(id)
+        );
+        if (!matches.length) return null;
+
+        return matches.reduce((best, el) => (buildingScore(el) > buildingScore(best) ? el : best));
     }
 
     function outlineFromWay(element) {
@@ -165,8 +203,7 @@
         return outlineFromElement(elementFromResponse(data, spec));
     }
 
-    function buildingFromResponse(data, spec) {
-        const element = elementFromResponse(data, spec);
+    function buildingFromElement(element) {
         const outline = outlineFromElement(element);
         if (!outline || outline.length < 3) return null;
 
@@ -176,10 +213,18 @@
         return { outline, levels, minLevel, maxLevel };
     }
 
+    function buildingFromResponse(data, spec) {
+        const element =
+            spec.type === "auto"
+                ? pickBuildingElement(data?.elements, spec.id)
+                : elementFromResponse(data, spec);
+        return buildingFromElement(element);
+    }
+
     async function fetchOutline(spec) {
         if (!spec?.id || !spec?.type) return null;
 
-        if (spec.type !== "way" && spec.type !== "relation") {
+        if (spec.type !== "way" && spec.type !== "relation" && spec.type !== "auto") {
             throw new Error(`Nieobsługiwany typ OSM: ${spec.type}`);
         }
 
@@ -189,7 +234,7 @@
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
                 Accept: "application/json",
-                "User-Agent": "TupTupRecipientFlow/1.0",
+                "User-Agent": "TupTup/1.0",
             },
             body: `data=${encodeURIComponent(query)}`,
         });
