@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>TupTup - lokalizacja dostawy</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .sheet-step[hidden] {
+            display: none;
+        }
+
+        .nav-tab {
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+            font: inherit;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .nav-tab--locked {
+            opacity: 0.38;
+            cursor: default;
+        }
+
+        .map-marker--active {
+            transform: scale(1.08);
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+        }
+
+        .app--flow .topbar .icon-button {
+            grid-column: 1;
+        }
+
+        .app--flow .topbar .step-badge {
+            grid-column: 2;
+        }
+
+        .app--flow .topbar .cancel {
+            grid-column: 3;
+        }
+
+        .app--flow .icon-button--ghost {
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .app--flow .map-area {
+            flex: 1 1 0;
+            min-height: 0;
+        }
+
+        .app--flow .map-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .form-meta {
+            display: none;
+        }
+
+        .app--flow .sheet.is-collapsed {
+            padding: 10px 18px 12px;
+        }
+
+        .app--flow .sheet.is-collapsed .sheet-body {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <form id="recipient-form" class="app app--flow">
+        <header class="topbar">
+            <button type="button" class="icon-button icon-button--ghost" id="back-button" aria-label="Wróć do poprzedniego kroku">‹</button>
+            <div class="step-badge" id="step-badge">1 z 3</div>
+            <a class="cancel" href="#">Anuluj</a>
+        </header>
+
+        <section class="hero-copy">
+            <h1 id="hero-title">Gdzie najlepiej zaparkować?</h1>
+            <p id="hero-desc">Wskaż miejsce parkingowe, z którego najłatwiej dotrzeć do wejścia.</p>
+        </section>
+
+        <section class="map-area" data-map-mode="all" aria-label="Mapa z parkingiem, wejściem i celem dostawy">
+            <div class="map-canvas" role="application" aria-label="Mapa OpenStreetMap"></div>
+            <div class="map-control-stack">
+                <button type="button" class="map-control map-control-locate" aria-label="Moja lokalizacja">⌖</button>
+                <button type="button" class="map-control map-control-reset" aria-label="Wyśrodkuj mapę na budynku">2D</button>
+            </div>
+            <fieldset class="floor-picker" id="floor-picker" hidden>
+                <legend class="floor-picker-legend">Piętro</legend>
+                <label class="floor-option">
+                    <input type="radio" name="delivery_floor" value="4">
+                    <span>4</span>
+                </label>
+                <label class="floor-option">
+                    <input type="radio" name="delivery_floor" value="3">
+                    <span>3</span>
+                </label>
+                <label class="floor-option">
+                    <input type="radio" name="delivery_floor" value="2" checked>
+                    <span>2</span>
+                </label>
+                <label class="floor-option">
+                    <input type="radio" name="delivery_floor" value="1">
+                    <span>1</span>
+                </label>
+                <label class="floor-option">
+                    <input type="radio" name="delivery_floor" value="0">
+                    <span>0</span>
+                </label>
+                <label class="floor-option">
+                    <input type="radio" name="delivery_floor" value="-1">
+                    <span>-1</span>
+                </label>
+            </fieldset>
+        </section>
+
+        <div class="form-meta" aria-hidden="true">
+            <input type="hidden" name="building_osm_way" value="160207067">
+            <input type="hidden" name="building_name" value="C10">
+            <input type="hidden" name="parking_lat" value="">
+            <input type="hidden" name="parking_lng" value="">
+            <input type="hidden" name="entrance_lat" value="">
+            <input type="hidden" name="entrance_lng" value="">
+            <input type="hidden" name="delivery_lat" value="">
+            <input type="hidden" name="delivery_lng" value="">
+        </div>
+
+        <section class="sheet is-collapsed" data-default-collapsed data-expand-on-drop>
+            <button type="button" class="sheet-drag-zone" aria-expanded="false" aria-controls="sheet-panel" aria-label="Dotknij lub przeciągnij w górę, aby rozwinąć panel">
+                <span class="sheet-handle" aria-hidden="true"></span>
+            </button>
+            <div class="sheet-body" id="sheet-panel">
+                <section class="sheet-step" data-step="parking">
+                    <div class="sheet-head">
+                        <div class="sheet-icon">P</div>
+                        <div>
+                            <h2>Wybrane miejsce</h2>
+                            <p>Erazma Ciołka 10, Warszawa</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="textarea-wrap">
+                            <label class="label" for="parking_note">Opis opcjonalnie</label>
+                            <textarea id="parking_note" class="note" name="parking_note" maxlength="100" rows="3">Najlepiej od strony ulicy Górczewskiej, przy płocie.</textarea>
+                            <div class="counter" aria-live="polite">48/100</div>
+                        </div>
+                        <div class="photo-card street" aria-label="Zdjęcie parkingu">
+                            <input type="file" class="photo-input" name="parking_photo" accept="image/*" capture="environment" hidden>
+                            <button type="button" class="camera-button" aria-label="Dodaj zdjęcie">▣</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sheet-step" data-step="entrance" hidden>
+                    <div class="sheet-head">
+                        <div class="sheet-icon">▯</div>
+                        <div>
+                            <h2>Wybrane wejście</h2>
+                            <p>Wejście C10</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="textarea-wrap">
+                            <label class="label" for="entrance_note">Opis opcjonalnie</label>
+                            <textarea id="entrance_note" class="note" name="entrance_note" maxlength="100" rows="3">Wejście C10 znajduje się po lewej stronie od Żabki.</textarea>
+                            <div class="counter" aria-live="polite">40/100</div>
+                        </div>
+                        <div class="photo-card entrance" aria-label="Zdjęcie wejścia C10">
+                            <input type="file" class="photo-input" name="entrance_photo" accept="image/*" capture="environment" hidden>
+                            <button type="button" class="camera-button" aria-label="Dodaj zdjęcie">▣</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sheet-step" data-step="destination" hidden>
+                    <div class="sheet-head">
+                        <div class="sheet-icon">◎</div>
+                        <div>
+                            <h2>Miejsce dostawy</h2>
+                            <p id="delivery-floor-label">Sala 229, 2 piętro</p>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="textarea-wrap">
+                            <label class="label" for="delivery_note">Szczegóły opcjonalnie</label>
+                            <textarea id="delivery_note" class="note" name="delivery_note" maxlength="100" rows="3">Sala 229, po prawej stronie korytarza, za drzwiami szklanymi.</textarea>
+                            <div class="counter" aria-live="polite">53/100</div>
+                        </div>
+                        <div class="photo-card door" aria-label="Zdjęcie drzwi lub celu dostawy">
+                            <input type="file" class="photo-input" name="delivery_photo" accept="image/*" capture="environment" hidden>
+                            <button type="button" class="camera-button" aria-label="Dodaj zdjęcie">▣</button>
+                        </div>
+                    </div>
+                </section>
+
+                <button type="button" class="primary-button" id="step-action">Dalej →</button>
+            </div>
+        </section>
+
+        <nav class="bottom-nav" aria-label="Postęp kreatora">
+            <button type="button" class="nav-item nav-tab active" data-step-tab="parking" aria-current="step"><strong>▰</strong><span>Parking</span></button>
+            <button type="button" class="nav-item nav-tab nav-tab--locked" data-step-tab="entrance" disabled aria-disabled="true"><strong>▯</strong><span>Wejście</span></button>
+            <button type="button" class="nav-item nav-tab nav-tab--locked" data-step-tab="destination" disabled aria-disabled="true"><strong>◎</strong><span>Cel</span></button>
+        </nav>
+    </form>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="map-index.js"></script>
+    <script src="sheet.js" defer></script>
+    <script src="note.js" defer></script>
+    <script src="flow.js" defer></script>
+</body>
+</html>
