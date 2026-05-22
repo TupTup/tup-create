@@ -91,20 +91,92 @@
         return `[out:json][timeout:25];${osmType}(${id});out geom;`;
     }
 
-    function isBuildingElement(element) {
-        const tags = element?.tags;
+    const EXCLUDED_BUILDING_VALUES = new Set(["part", "roof"]);
+
+    function hasBuildingTag(tags) {
         if (!tags) return false;
         if (tags.building) return true;
-        if (tags.type === "multipolygon" && tags.building !== undefined) return true;
-        return false;
+        return tags.type === "multipolygon" && tags.building !== undefined;
     }
 
-    function buildingScore(element) {
+    function isPrimaryNonBuildingFeature(tags) {
+        if (!tags) return false;
+        if (hasBuildingTag(tags)) return false;
+        return Boolean(
+            tags.landuse || tags.amenity || tags.parking || tags.highway || tags.indoor
+        );
+    }
+
+    function isExcludedOutlineElement(element) {
+        const tags = element?.tags;
+        if (!tags) return false;
+        const building = tags.building;
+        if (building && EXCLUDED_BUILDING_VALUES.has(String(building).toLowerCase())) {
+            return true;
+        }
+        return isPrimaryNonBuildingFeature(tags);
+    }
+
+    function isBuildingPartElement(element) {
+        const building = element?.tags?.building;
+        return building != null && String(building).toLowerCase() === "part";
+    }
+
+    function isFullBuildingElement(element) {
+        if (!element || (element.type !== "way" && element.type !== "relation")) return false;
+        if (!hasBuildingTag(element.tags)) return false;
+        if (isExcludedOutlineElement(element)) return false;
+        return Boolean(outlineFromElement(element));
+    }
+
+    function hasUsableOutline(element) {
+        const outline = outlineFromElement(element);
+        return Boolean(outline && outline.length >= 3);
+    }
+
+    /** Geometria z żądanego osm_id, gdy brak tagu building (np. sam `out geom` z Overpass). */
+    function isGeometryOutlineFallback(element) {
+        if (!element || (element.type !== "way" && element.type !== "relation")) return false;
+        if (isExcludedOutlineElement(element) || isPrimaryNonBuildingFeature(element?.tags)) {
+            return false;
+        }
+        return hasUsableOutline(element);
+    }
+
+    function isBuildingElement(element) {
+        return (
+            isFullBuildingElement(element) ||
+            isBuildingPartElement(element) ||
+            isGeometryOutlineFallback(element)
+        );
+    }
+
+    function outlineVertexCount(element) {
+        const outline = outlineFromElement(element);
+        return outline?.length ?? 0;
+    }
+
+    function outlineAreaOfElement(element) {
+        const outline = outlineFromElement(element);
+        return outline ? ringArea(outline) : 0;
+    }
+
+    function buildingCandidateScore(element, { allowPart = false, allowGeometry = false } = {}) {
         if (!element) return -1;
+        const full = isFullBuildingElement(element);
+        const part = isBuildingPartElement(element);
+        const geometry = isGeometryOutlineFallback(element);
+        if (!full && !(allowPart && part) && !(allowGeometry && geometry)) return -1;
+
         let score = 0;
-        if (element.type === "relation") score += 4;
-        if (isBuildingElement(element)) score += 8;
-        if (outlineFromElement(element)) score += 2;
+        if (element.type === "way") score += 1000;
+        if (element.type === "relation") score += 100;
+        if (full) score += 500;
+        if (part) score += 50;
+        if (geometry) score += 30;
+
+        score += Math.log10(outlineAreaOfElement(element) + 1) * 40;
+        score += Math.max(0, 120 - outlineVertexCount(element));
         return score;
     }
 
@@ -117,32 +189,227 @@
         );
         if (!matches.length) return null;
 
-        return matches.reduce((best, el) => (buildingScore(el) > buildingScore(best) ? el : best));
+        const full = matches.filter(isFullBuildingElement);
+        const parts = matches.filter(isBuildingPartElement);
+        const pool = full.length
+            ? full
+            : parts.length
+              ? parts
+              : matches.filter(isGeometryOutlineFallback);
+        if (!pool.length) return null;
+
+        const scoreOpts = {
+            allowPart: !full.length,
+            allowGeometry: !full.length && !parts.length,
+        };
+
+        return pool.reduce((best, el) =>
+            buildingCandidateScore(el, scoreOpts) > buildingCandidateScore(best, scoreOpts)
+                ? el
+                : best
+        );
+    }
+
+    function selectionMetaForElement(element, { spec, candidates = [] } = {}) {
+        const osm_type = element.type;
+        const osm_id = element.id;
+        const full = isFullBuildingElement(element);
+        const partOnly = !full && isBuildingPartElement(element);
+        const ways = candidates.filter((el) => el.type === "way" && isFullBuildingElement(el));
+        const relations = candidates.filter(
+            (el) => el.type === "relation" && isFullBuildingElement(el)
+        );
+
+        if (spec?.type === "way") {
+            return {
+                osm_type,
+                osm_id,
+                source_reason: "explicit way request",
+                confidence: full ? 0.94 : 0.5,
+            };
+        }
+        if (spec?.type === "relation") {
+            return {
+                osm_type,
+                osm_id,
+                source_reason: "explicit relation request",
+                confidence: full ? 0.9 : 0.5,
+            };
+        }
+        if (partOnly) {
+            return {
+                osm_type,
+                osm_id,
+                source_reason: "building part fallback",
+                confidence: 0.55,
+            };
+        }
+        if (!full && hasUsableOutline(element)) {
+            return {
+                osm_type,
+                osm_id,
+                source_reason: "geometry outline fallback",
+                confidence: 0.65,
+            };
+        }
+        if (element.type === "way" && ways.length === 1 && !relations.length) {
+            return {
+                osm_type,
+                osm_id,
+                source_reason: "single building polygon",
+                confidence: 0.97,
+            };
+        }
+        if (element.type === "way" && relations.length) {
+            return {
+                osm_type,
+                osm_id,
+                source_reason: "way preferred over relation",
+                confidence: 0.88,
+            };
+        }
+        if (element.type === "relation") {
+            return {
+                osm_type,
+                osm_id,
+                source_reason: "multipolygon building outline",
+                confidence: relations.length && !ways.length ? 0.82 : 0.75,
+            };
+        }
+        return {
+            osm_type,
+            osm_id,
+            source_reason: "building outline",
+            confidence: 0.7,
+        };
     }
 
     function outlineFromWay(element) {
         return geometryToOutline(element.geometry);
     }
 
-    function outlineFromRelation(element) {
+    function coordKey([lat, lon]) {
+        return `${lat.toFixed(7)},${lon.toFixed(7)}`;
+    }
+
+    function ringIsClosed(ring) {
+        if (!ring || ring.length < 4) return false;
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        return coordKey(first) === coordKey(last);
+    }
+
+    function closeRing(ring) {
+        if (!ring || ring.length < 3) return null;
+        if (ringIsClosed(ring)) return ring;
+        return [...ring, ring[0]];
+    }
+
+    function appendSegment(ring, segment, reverse) {
+        const coords = reverse ? [...segment].reverse() : segment;
+        const start = ring.length ? ring.length - 1 : 0;
+        for (let i = 0; i < coords.length; i += 1) {
+            if (start === 0 && i === 0) {
+                ring.push(coords[i]);
+                continue;
+            }
+            if (i === 0 && coordKey(ring[ring.length - 1]) === coordKey(coords[0])) continue;
+            ring.push(coords[i]);
+        }
+        return ring;
+    }
+
+    function assembleRingFromSegments(segments) {
+        const remaining = segments
+            .map((segment) => segment.filter(Boolean))
+            .filter((segment) => segment.length >= 2)
+            .map((segment) => segment.slice());
+
+        if (!remaining.length) return null;
+        if (remaining.length === 1) return closeRing(remaining[0]);
+
+        const ring = [];
+        let current = remaining.shift();
+        appendSegment(ring, current, false);
+
+        while (remaining.length) {
+            const tail = coordKey(ring[ring.length - 1]);
+            let merged = false;
+
+            for (let i = 0; i < remaining.length; i += 1) {
+                const segment = remaining[i];
+                const head = coordKey(segment[0]);
+                const end = coordKey(segment[segment.length - 1]);
+
+                if (tail === head) {
+                    appendSegment(ring, segment, false);
+                    remaining.splice(i, 1);
+                    merged = true;
+                    break;
+                }
+                if (tail === end) {
+                    appendSegment(ring, segment, true);
+                    remaining.splice(i, 1);
+                    merged = true;
+                    break;
+                }
+            }
+
+            if (merged) continue;
+
+            const largest = remaining.reduce(
+                (best, segment) => (segment.length > best.length ? segment : best),
+                remaining[0]
+            );
+            remaining.splice(remaining.indexOf(largest), 1);
+            appendSegment(ring, largest, false);
+        }
+
+        return closeRing(ring);
+    }
+
+    function outerRingsFromRelation(element) {
         const rings = [];
 
         if (Array.isArray(element.members)) {
+            const outerSegments = [];
             for (const member of element.members) {
                 if (member.role === "inner") continue;
-                if (member.type === "way" && member.geometry) {
-                    const ring = geometryToOutline(member.geometry);
-                    if (ring) rings.push(ring);
-                }
+                if (member.type !== "way" || !member.geometry) continue;
+                const segment = geometryToOutline(member.geometry);
+                if (segment) outerSegments.push(segment);
+            }
+
+            const assembled = assembleRingFromSegments(outerSegments);
+            if (assembled) rings.push(assembled);
+
+            for (const segment of outerSegments) {
+                const closed = closeRing(segment);
+                if (closed) rings.push(closed);
             }
         }
 
-        if (rings.length) return pickLargestRing(rings);
-
         if (element.geometry) {
-            return geometryToOutline(element.geometry);
+            const ring = geometryToOutline(element.geometry);
+            if (ring) rings.push(ring);
         }
 
+        const unique = [];
+        const seen = new Set();
+        for (const ring of rings) {
+            if (!ring || ring.length < 3) continue;
+            const key = ring.map(coordKey).join("|");
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(ring);
+        }
+
+        return unique;
+    }
+
+    function outlineFromRelation(element) {
+        const rings = outerRingsFromRelation(element);
+        if (rings.length) return pickLargestRing(rings);
         return null;
     }
 
@@ -231,23 +498,45 @@
         return outlineFromElement(elementFromResponse(data, spec));
     }
 
-    function buildingFromElement(element) {
+    function buildingFromElement(element, metaContext = {}) {
         const outline = outlineFromElement(element);
         if (!outline || outline.length < 3) return null;
 
         const { levels, minLevel } = levelsFromElement(element);
         const maxLevel = levels - 1 + minLevel;
         const { name, address } = placeFromElement(element);
+        const selection = selectionMetaForElement(element, metaContext);
 
-        return { outline, levels, minLevel, maxLevel, name, address };
+        return {
+            outline,
+            levels,
+            minLevel,
+            maxLevel,
+            name,
+            address,
+            osm_type: selection.osm_type,
+            osm_id: selection.osm_id,
+            source_reason: selection.source_reason,
+            confidence: selection.confidence,
+        };
     }
 
     function buildingFromResponse(data, spec) {
-        const element =
+        const elements = data?.elements;
+        const candidates = Array.isArray(elements)
+            ? elements.filter((el) => el.type === "way" || el.type === "relation")
+            : [];
+
+        let element =
             spec.type === "auto"
-                ? pickBuildingElement(data?.elements, spec.id)
+                ? pickBuildingElement(elements, spec.id)
                 : elementFromResponse(data, spec);
-        return buildingFromElement(element);
+
+        if (element && !isBuildingElement(element)) {
+            element = null;
+        }
+
+        return buildingFromElement(element, { spec, candidates });
     }
 
     async function fetchOutline(spec) {
@@ -312,6 +601,9 @@
         nameFromTags,
         addressFromTags,
         placeFromElement,
+        isFullBuildingElement,
+        pickBuildingElement,
+        selectionMetaForElement,
         fetchOutline,
         resolve,
     };

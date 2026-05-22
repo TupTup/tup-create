@@ -18,6 +18,8 @@
     let wizardStarted = false;
     let mapStarted = false;
     let pendingBuilding = null;
+    let outlineLoading = Boolean(outlineApi?.parseOsmFromPage?.());
+    let resizeLayoutTimer = null;
 
     const markers = {};
     const routeLines = {};
@@ -80,6 +82,10 @@
 
     function hasBuilding() {
         return buildingOutline.length >= 3 && buildingBounds?.isValid();
+    }
+
+    function awaitingBuilding() {
+        return Boolean(pendingBuilding) || outlineLoading;
     }
 
     function defaultPointsForOutline(outline) {
@@ -155,6 +161,18 @@
         }
         buildingLayer.setLatLngs(buildingOutline);
         buildingLayer.setStyle(buildingLayerStyle);
+        if (map.hasLayer(buildingLayer)) {
+            requestAnimationFrame(() => {
+                if (map.hasLayer(buildingLayer)) buildingLayer.bringToFront();
+            });
+        }
+        if (buildingBounds?.isValid()) {
+            map.fitBounds(buildingBounds, {
+                padding: [20, 20],
+                maxZoom: PARKING_MAX_ZOOM,
+                animate: false,
+            });
+        }
         repositionMarkersForBuilding();
         if (!markersInitialized) {
             initMarkersAndRoutes();
@@ -167,17 +185,13 @@
     function scheduleMapLayoutRetries() {
         refreshMapLayout();
         requestAnimationFrame(refreshMapLayout);
-        setTimeout(refreshMapLayout, 120);
-        setTimeout(refreshMapLayout, 400);
+        [120, 400, 800, 1500].forEach((ms) => setTimeout(refreshMapLayout, ms));
     }
 
     function ensureWizardStarted() {
         if (wizardStarted || !markersInitialized) return;
         wizardStarted = true;
         applyWizardStep("parking");
-        requestAnimationFrame(refreshMapLayout);
-        setTimeout(refreshMapLayout, 120);
-        setTimeout(refreshMapLayout, 400);
     }
 
     function markerIcon(type, label, active) {
@@ -468,6 +482,16 @@
         };
     }
 
+    function fitBuildingBoundsFallback(padding = 48) {
+        if (!buildingBounds?.isValid()) return false;
+        map.fitBounds(buildingBounds, {
+            padding: [padding, padding],
+            maxZoom: BUILDING_FILL_MAX_ZOOM,
+            animate: false,
+        });
+        return true;
+    }
+
     function fitBuildingFillView() {
         if (!hasBuilding()) return false;
         map.invalidateSize(true);
@@ -478,7 +502,9 @@
         map.setView(center, map.getZoom(), { animate: false });
 
         const box = getBuildingScreenBox();
-        if (!box || box.width < 2 || box.height < 2) return false;
+        if (!box || box.width < 2 || box.height < 2) {
+            return fitBuildingBoundsFallback();
+        }
 
         const fitRatio = Math.min(size.x / box.width, size.y / box.height) * BUILDING_FILL_INSET;
         const targetZoom = Math.min(map.getZoom() + Math.log2(fitRatio), BUILDING_FILL_MAX_ZOOM);
@@ -497,7 +523,7 @@
     function centerBuildingInMapView() {
         map.invalidateSize(true);
         const box = getBuildingScreenBox();
-        if (!box) return false;
+        if (!box) return fitBuildingBoundsFallback(32);
 
         const size = map.getSize();
         if (size.x < 10 || size.y < 10) return false;
@@ -518,6 +544,7 @@
 
     function fitMapView() {
         if (!hasBuilding()) {
+            if (awaitingBuilding()) return;
             map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
             return;
         }
@@ -541,6 +568,12 @@
 
     function refreshMapLayout() {
         map.invalidateSize(true);
+        if (!hasBuilding() && awaitingBuilding()) {
+            if (!map.getCenter()) {
+                map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
+            }
+            return;
+        }
         fitMapView();
     }
 
@@ -613,7 +646,10 @@
 
     resetButton?.addEventListener("click", fitMapView);
 
-    const resizeObserver = new ResizeObserver(() => refreshMapLayout());
+    const resizeObserver = new ResizeObserver(() => {
+        clearTimeout(resizeLayoutTimer);
+        resizeLayoutTimer = setTimeout(refreshMapLayout, 80);
+    });
     resizeObserver.observe(mapArea);
 
     window.addEventListener("orientationchange", () => {
@@ -657,19 +693,37 @@
         document.dispatchEvent(new CustomEvent("tuptup:map-ready"));
     }
 
+    function loadBuildingFromOsm() {
+        if (!outlineApi?.resolve) return;
+
+        outlineApi
+            .resolve()
+            .then((building) => {
+                outlineLoading = false;
+                if (!building?.outline?.length) {
+                    console.warn("[TupTup] Brak osm_id budynku — podaj ?osmid= lub building_osm_way.");
+                    if (mapStarted) refreshMapLayout();
+                    return;
+                }
+                pendingBuilding = building;
+                if (mapStarted) flushPendingBuilding();
+                else scheduleMapLayoutRetries();
+            })
+            .catch((error) => {
+                outlineLoading = false;
+                console.warn("[TupTup] Błąd pobierania obrysu budynku:", error);
+                if (mapStarted) refreshMapLayout();
+            });
+    }
+
     // Po DOMContentLoaded — wtedy skrypty `defer` (flow.js) są już wykonane.
     document.addEventListener("DOMContentLoaded", startMap);
 
     window.addEventListener("load", scheduleMapLayoutRetries);
 
-    if (outlineApi?.resolve) {
-        outlineApi.resolve().then((building) => {
-            if (!building?.outline?.length) {
-                console.warn("[TupTup] Brak osm_id budynku — podaj ?osmid= lub building_osm_way.");
-                return;
-            }
-            pendingBuilding = building;
-            if (mapStarted) flushPendingBuilding();
-        });
+    if (outlineApi?.parseOsmFromPage?.()) {
+        loadBuildingFromOsm();
+    } else {
+        outlineLoading = false;
     }
 })();
