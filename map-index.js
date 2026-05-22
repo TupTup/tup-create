@@ -49,12 +49,16 @@
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
 
-    const buildingLayer = L.polygon(buildingOutline, {
-        color: "#8d8d8d",
-        weight: 2,
+    const buildingLayerStyle = {
+        className: "map-building-highlight",
+        color: "#111111",
+        weight: 3,
         fillColor: "#ffffff",
-        fillOpacity: 0.52,
-    }).addTo(map);
+        fillOpacity: 0.72,
+        interactive: false,
+    };
+
+    const buildingLayer = L.polygon(buildingOutline, buildingLayerStyle).addTo(map);
 
     layers.push(buildingLayer);
 
@@ -63,6 +67,7 @@
         buildingOutline = outline;
         buildingBounds = L.latLngBounds(buildingOutline);
         buildingLayer.setLatLngs(buildingOutline);
+        buildingLayer.setStyle(buildingLayerStyle);
         refreshMapLayout();
     }
 

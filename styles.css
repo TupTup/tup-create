@@ -172,6 +172,10 @@ body {
     background: rgba(255, 255, 255, 0.92);
 }
 
+.map-area .leaflet-overlay-pane path.map-building-highlight {
+    pointer-events: none;
+}
+
 .map-control-stack {
     position: absolute;
     right: 16px;
