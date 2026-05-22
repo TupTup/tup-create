@@ -37,10 +37,61 @@
     let stepIndex = 0;
     let maxStepIndex = 0;
 
+    const DEFAULT_FLOOR = "2";
+
     function floorLabel(value) {
         if (value === "0") return "parter";
         if (value === "-1") return "piwnica";
         return `${value} piętro`;
+    }
+
+    function floorDisplayLabel(level) {
+        if (level === 0) return "0";
+        if (level === -1) return "-1";
+        return String(level);
+    }
+
+    function buildFloorPicker({ minLevel, maxLevel }) {
+        if (!floorPicker) return;
+
+        const min = Number(minLevel);
+        const max = Number(maxLevel);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return;
+
+        const previous = form.querySelector('input[name="delivery_floor"]:checked')?.value;
+        floorPicker.querySelectorAll(".floor-option").forEach((node) => node.remove());
+
+        const levels = [];
+        for (let level = max; level >= min; level -= 1) {
+            levels.push(level);
+        }
+
+        const preferred =
+            previous && levels.some((level) => String(level) === previous)
+                ? previous
+                : levels.includes(Number(DEFAULT_FLOOR))
+                  ? DEFAULT_FLOOR
+                  : String(levels[Math.floor(levels.length / 2)] ?? maxLevel);
+
+        levels.forEach((level) => {
+            const value = String(level);
+            const label = document.createElement("label");
+            label.className = "floor-option";
+
+            const input = document.createElement("input");
+            input.type = "radio";
+            input.name = "delivery_floor";
+            input.value = value;
+            if (value === preferred) input.checked = true;
+
+            const span = document.createElement("span");
+            span.textContent = floorDisplayLabel(level);
+
+            label.append(input, span);
+            floorPicker.append(label);
+
+            input.addEventListener("change", updateDeliveryFloorLabel);
+        });
     }
 
     function updateDeliveryFloorLabel() {
@@ -122,10 +173,6 @@
         }
     });
 
-    form.querySelectorAll('input[name="delivery_floor"]').forEach((input) => {
-        input.addEventListener("change", updateDeliveryFloorLabel);
-    });
-
     document.addEventListener("tuptup:coords", (event) => {
         const { parking, entrance, delivery } = event.detail;
         const pairs = [
@@ -185,7 +232,19 @@
         alert("Lokalizacja zapisana (podgląd w konsoli deweloperskiej).");
     });
 
+    function initFloorPickerFromDefaults() {
+        const levels = window.TupTupBuildingOutline?.DEFAULT_LEVELS;
+        if (levels == null) return;
+        buildFloorPicker({ minLevel: 0, maxLevel: levels - 1 });
+    }
+
+    let bootstrapped = false;
+
     function bootstrap() {
+        if (bootstrapped) return;
+        bootstrapped = true;
+
+        initFloorPickerFromDefaults();
         updateDeliveryFloorLabel();
         goToStep(0);
 
@@ -197,5 +256,14 @@
         }
     }
 
+    initFloorPickerFromDefaults();
+
     document.addEventListener("tuptup:map-ready", bootstrap, { once: true });
+    document.addEventListener("tuptup:building", (event) => {
+        const { minLevel, maxLevel } = event.detail;
+        buildFloorPicker({ minLevel, maxLevel });
+        updateDeliveryFloorLabel();
+    });
+
+    if (window.TupTupMap) bootstrap();
 })();

@@ -39,13 +39,18 @@
         },
     };
 
+    const BUILDING_FILL_MAX_ZOOM = 22;
+    const PARKING_MAX_ZOOM = 19;
+
     const map = L.map(mapCanvas, {
         zoomControl: false,
         attributionControl: true,
+        maxZoom: BUILDING_FILL_MAX_ZOOM,
     });
 
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
+        maxZoom: BUILDING_FILL_MAX_ZOOM,
+        maxNativeZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
 
@@ -139,20 +144,8 @@
     let buildingBounds = L.latLngBounds(buildingOutline);
     const lastValidDrag = {};
 
-    function getBuildingCloseBounds() {
-        const center = buildingBounds.getCenter();
-        const latSpan = Math.max(
-            (buildingBounds.getNorth() - buildingBounds.getSouth()) * 0.28,
-            0.00055
-        );
-        const lngSpan = Math.max(
-            (buildingBounds.getEast() - buildingBounds.getWest()) * 0.28,
-            0.0007
-        );
-        return L.latLngBounds(
-            [center.lat - latSpan, center.lng - lngSpan],
-            [center.lat + latSpan, center.lng + lngSpan]
-        );
+    function isBuildingFillStep() {
+        return wizardStep === "entrance" || wizardStep === "destination";
     }
 
     function pointInBuilding(latlng) {
@@ -326,25 +319,81 @@
             );
         }
 
-        return getBuildingCloseBounds();
     }
 
-    const viewByStep = {
-        parking: { padding: [16, 16], maxZoom: 19 },
-        entrance: { padding: [36, 36], maxZoom: 19 },
-        destination: { padding: [36, 36], maxZoom: 19 },
-    };
+    function getBuildingScreenBox() {
+        const pathEl = map.getPane("overlayPane")?.querySelector("path.map-building-highlight");
+        if (!pathEl) return null;
+
+        const mapRect = map.getContainer().getBoundingClientRect();
+        const pb = pathEl.getBBox();
+        const ctm = pathEl.getScreenCTM();
+        if (!ctm) return null;
+
+        const xs = [];
+        const ys = [];
+        [
+            [pb.x, pb.y],
+            [pb.x + pb.width, pb.y],
+            [pb.x + pb.width, pb.y + pb.height],
+            [pb.x, pb.y + pb.height],
+        ].forEach(([x, y]) => {
+            const pt = new DOMPoint(x, y).matrixTransform(ctm);
+            xs.push(pt.x - mapRect.left);
+            ys.push(pt.y - mapRect.top);
+        });
+
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        return {
+            width: maxX - minX,
+            height: maxY - minY,
+            centerX: (minX + maxX) / 2,
+            centerY: (minY + maxY) / 2,
+        };
+    }
+
+    function fitBuildingFillView() {
+        map.invalidateSize(true);
+        const size = map.getSize();
+        if (size.x < 10 || size.y < 10) return false;
+
+        const center = buildingLayer.getBounds().getCenter();
+        map.setView(center, map.getZoom(), { animate: false });
+
+        const box = getBuildingScreenBox();
+        if (!box || box.width < 2 || box.height < 2) return false;
+
+        const fitRatio = Math.min(size.x / box.width, size.y / box.height) * 0.98;
+        const targetZoom = Math.min(map.getZoom() + Math.log2(fitRatio), BUILDING_FILL_MAX_ZOOM);
+        const targetCenter = map.containerPointToLatLng(L.point(box.centerX, box.centerY));
+
+        map.setView(targetCenter, targetZoom, { animate: false });
+        return true;
+    }
+
+    function scheduleBuildingFillView() {
+        fitBuildingFillView();
+        requestAnimationFrame(fitBuildingFillView);
+        setTimeout(fitBuildingFillView, 320);
+    }
 
     function fitMapView() {
-        const options = viewByStep[wizardStep] || viewByStep.entrance;
-        const bounds = getFitBounds();
+        if (isBuildingFillStep()) {
+            scheduleBuildingFillView();
+            return;
+        }
 
+        const bounds = getFitBounds();
         if (!bounds.isValid()) {
             map.setView(points.entrance, 17);
             return;
         }
 
-        map.fitBounds(bounds, options);
+        map.fitBounds(bounds, { padding: [16, 16], maxZoom: PARKING_MAX_ZOOM });
     }
 
     function refreshMapLayout() {
@@ -446,15 +495,17 @@
         document.dispatchEvent(new CustomEvent("tuptup:map-ready"));
     }
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", startMap);
-    } else {
-        startMap();
-    }
+    // Po DOMContentLoaded — wtedy skrypty `defer` (flow.js) są już wykonane.
+    document.addEventListener("DOMContentLoaded", startMap);
 
     window.addEventListener("load", refreshMapLayout);
 
     if (outlineApi?.resolve) {
-        outlineApi.resolve().then(applyBuildingOutline);
+        outlineApi.resolve().then((building) => {
+            applyBuildingOutline(building.outline);
+            document.dispatchEvent(
+                new CustomEvent("tuptup:building", { detail: building })
+            );
+        });
     }
 })();
