@@ -5,13 +5,17 @@
     if (mapArea.dataset.mapMode !== "all") return;
 
     const outlineApi = window.TupTupBuildingOutline;
-    let buildingOutline = (outlineApi?.DEFAULT || []).slice();
+    const MAP_FALLBACK_CENTER = [52.2297, 21.0122];
+    const MAP_FALLBACK_ZOOM = 16;
 
+    let buildingOutline = [];
     const points = {
-        parking: [52.241418, 20.945742],
-        entrance: [52.2415365, 20.9458358],
-        delivery: [52.241618, 20.945698],
+        parking: null,
+        entrance: null,
+        delivery: null,
     };
+    let markersInitialized = false;
+    let wizardStarted = false;
 
     const markers = {};
     const routeLines = {};
@@ -64,17 +68,101 @@
         interactive: false,
     };
 
-    const buildingLayer = L.polygon(buildingOutline, buildingLayerStyle).addTo(map);
+    const buildingLayer = L.polygon([], buildingLayerStyle);
 
-    layers.push(buildingLayer);
+    function hasBuilding() {
+        return buildingOutline.length >= 3 && buildingBounds?.isValid();
+    }
+
+    function defaultPointsForOutline(outline) {
+        const bounds = L.latLngBounds(outline);
+        const center = bounds.getCenter();
+
+        let entrance = L.latLng(outline[0]);
+        let longest = -1;
+        for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+            const [lat1, lng1] = outline[j];
+            const [lat2, lng2] = outline[i];
+            const a = L.latLng(lat1, lng1);
+            const b = L.latLng(lat2, lng2);
+            const len = a.distanceTo(b);
+            if (len > longest) {
+                longest = len;
+                entrance = L.latLng((lat1 + lat2) / 2, (lng1 + lng2) / 2);
+            }
+        }
+        entrance = closestPointOnBuildingOutline(entrance);
+
+        const c = bounds.getCenter();
+        const dLat = entrance.lat - c.lat;
+        const dLng = entrance.lng - c.lng;
+        const len = Math.hypot(dLat, dLng) || 1e-9;
+        let parking = L.latLng(
+            entrance.lat + (dLat / len) * 0.00022,
+            entrance.lng + (dLng / len) * 0.00022
+        );
+        parking = pushOutsideBuilding(parking);
+
+        let delivery = center;
+        if (!pointInBuilding(delivery)) {
+            delivery = L.latLng(
+                entrance.lat + (c.lat - entrance.lat) * 0.45,
+                entrance.lng + (c.lng - entrance.lng) * 0.45
+            );
+        }
+        if (!pointInBuilding(delivery)) {
+            delivery = L.latLng(
+                (bounds.getNorth() + bounds.getSouth()) / 2,
+                (bounds.getEast() + bounds.getWest()) / 2
+            );
+        }
+
+        return {
+            parking: [parking.lat, parking.lng],
+            entrance: [entrance.lat, entrance.lng],
+            delivery: [delivery.lat, delivery.lng],
+        };
+    }
+
+    function repositionMarkersForBuilding() {
+        const defaults = defaultPointsForOutline(buildingOutline);
+        Object.entries(defaults).forEach(([key, coords]) => {
+            points[key] = coords;
+            const marker = markers[key];
+            if (!marker) return;
+            marker.setLatLng(coords);
+            lastValidDrag[key] = marker.getLatLng();
+        });
+        updateRoutes();
+        syncCoords();
+    }
 
     function applyBuildingOutline(outline) {
         if (!outline?.length) return;
         buildingOutline = outline;
         buildingBounds = L.latLngBounds(buildingOutline);
+        if (!map.hasLayer(buildingLayer)) {
+            buildingLayer.addTo(map);
+            layers.push(buildingLayer);
+        }
         buildingLayer.setLatLngs(buildingOutline);
         buildingLayer.setStyle(buildingLayerStyle);
+        repositionMarkersForBuilding();
+        if (!markersInitialized) {
+            initMarkersAndRoutes();
+            markersInitialized = true;
+        }
+        ensureWizardStarted();
         refreshMapLayout();
+    }
+
+    function ensureWizardStarted() {
+        if (wizardStarted || !markersInitialized) return;
+        wizardStarted = true;
+        applyWizardStep("parking");
+        requestAnimationFrame(refreshMapLayout);
+        setTimeout(refreshMapLayout, 120);
+        setTimeout(refreshMapLayout, 400);
     }
 
     function markerIcon(type, label, active) {
@@ -93,7 +181,8 @@
             points[key] = [lat, lng];
             return markers[key].getLatLng();
         }
-        return L.latLng(points[key]);
+        if (points[key]) return L.latLng(points[key]);
+        return hasBuilding() ? buildingBounds.getCenter() : L.latLng(MAP_FALLBACK_CENTER);
     }
 
     function syncCoords() {
@@ -142,7 +231,7 @@
         return line;
     }
 
-    let buildingBounds = L.latLngBounds(buildingOutline);
+    let buildingBounds = null;
     const lastValidDrag = {};
 
     function isBuildingFillStep() {
@@ -150,6 +239,7 @@
     }
 
     function pointInBuilding(latlng) {
+        if (!hasBuilding()) return false;
         const x = latlng.lng;
         const y = latlng.lat;
         let inside = false;
@@ -179,6 +269,7 @@
     }
 
     function closestPointOnBuildingOutline(latlng) {
+        if (!hasBuilding()) return latlng;
         let best = L.latLng(buildingOutline[0]);
         let bestDist = Infinity;
 
@@ -273,53 +364,46 @@
         }
     }
 
-    addMarker("parking", "parking", "P");
-    addMarker("entrance", "entry", "entry");
-    addMarker("delivery", "target", "◎");
-    addRoute("parking-entrance", "parking", "entrance");
-    addRoute("entrance-delivery", "entrance", "delivery");
+    function initMarkersAndRoutes() {
+        addMarker("parking", "parking", "P");
+        addMarker("entrance", "entry", "entry");
+        addMarker("delivery", "target", "◎");
+        addRoute("parking-entrance", "parking", "entrance");
+        addRoute("entrance-delivery", "entrance", "delivery");
 
-    Object.entries(markers).forEach(([key, marker]) => {
-        marker.on("dragstart", () => {
-            lastValidDrag[key] = marker.getLatLng();
-        });
-
-        marker.on("drag", () => {
-            const constrained =
-                (wizardStep === "parking" && key === "parking") ||
-                (wizardStep === "entrance" && key === "entrance") ||
-                (wizardStep === "destination" && key === "delivery");
-
-            if (constrained) constrainMarkerPosition(key, marker);
-            updateRoutes();
-        });
-
-        marker.on("dragend", () => {
-            const { lat, lng } = marker.getLatLng();
-            points[key] = [lat, lng];
-            updateRoutes();
-        });
-    });
-
-    function getFitBounds() {
-        if (wizardStep === "parking") {
-            const config = wizardConfig[wizardStep];
-            const visibleLayers = [buildingLayer];
-
-            config.markers.forEach((key) => {
-                if (markers[key]) visibleLayers.push(markers[key]);
+        Object.entries(markers).forEach(([key, marker]) => {
+            marker.on("dragstart", () => {
+                lastValidDrag[key] = marker.getLatLng();
             });
 
-            const bounds = L.featureGroup(visibleLayers).getBounds();
-            const center = bounds.getCenter();
-            const latSpan = Math.max((bounds.getNorth() - bounds.getSouth()) * 0.28, 0.00055);
-            const lngSpan = Math.max((bounds.getEast() - bounds.getWest()) * 0.28, 0.0007);
-            return L.latLngBounds(
-                [center.lat - latSpan, center.lng - lngSpan],
-                [center.lat + latSpan, center.lng + lngSpan]
-            );
-        }
+            marker.on("drag", () => {
+                const constrained =
+                    (wizardStep === "parking" && key === "parking") ||
+                    (wizardStep === "entrance" && key === "entrance") ||
+                    (wizardStep === "destination" && key === "delivery");
 
+                if (constrained) constrainMarkerPosition(key, marker);
+                updateRoutes();
+            });
+
+            marker.on("dragend", () => {
+                const { lat, lng } = marker.getLatLng();
+                points[key] = [lat, lng];
+                updateRoutes();
+            });
+        });
+    }
+
+    function getFitBounds() {
+        if (wizardStep !== "parking" || !hasBuilding()) return null;
+
+        const center = buildingBounds.getCenter();
+        const latSpan = Math.max((buildingBounds.getNorth() - buildingBounds.getSouth()) * 0.35, 0.00055);
+        const lngSpan = Math.max((buildingBounds.getEast() - buildingBounds.getWest()) * 0.35, 0.0007);
+        return L.latLngBounds(
+            [center.lat - latSpan, center.lng - lngSpan],
+            [center.lat + latSpan, center.lng + lngSpan]
+        );
     }
 
     function getBuildingScreenBox() {
@@ -358,6 +442,7 @@
     }
 
     function fitBuildingFillView() {
+        if (!hasBuilding()) return false;
         map.invalidateSize(true);
         const size = map.getSize();
         if (size.x < 10 || size.y < 10) return false;
@@ -383,14 +468,19 @@
     }
 
     function fitMapView() {
+        if (!hasBuilding()) {
+            map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
+            return;
+        }
+
         if (isBuildingFillStep()) {
             scheduleBuildingFillView();
             return;
         }
 
         const bounds = getFitBounds();
-        if (!bounds.isValid()) {
-            map.setView(points.entrance, 17);
+        if (!bounds?.isValid()) {
+            map.setView(buildingBounds.getCenter(), 17);
             return;
         }
 
@@ -403,7 +493,7 @@
     }
 
     function applyWizardStep(step) {
-        if (!wizardConfig[step]) return;
+        if (!wizardConfig[step] || !markersInitialized) return;
         wizardStep = step;
         const config = wizardConfig[step];
 
@@ -481,18 +571,20 @@
     window.TupTupMap = {
         setWizardStep: applyWizardStep,
         fitMapView: refreshMapLayout,
-        getPoints: () => ({
-            parking: [...points.parking],
-            entrance: [...points.entrance],
-            delivery: [...points.delivery],
-        }),
+        getPoints: () => {
+            if (!points.parking || !points.entrance || !points.delivery) return null;
+            return {
+                parking: [...points.parking],
+                entrance: [...points.entrance],
+                delivery: [...points.delivery],
+            };
+        },
+        hasBuilding: () => hasBuilding(),
     };
 
     function startMap() {
-        applyWizardStep("parking");
+        map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
         requestAnimationFrame(refreshMapLayout);
-        setTimeout(refreshMapLayout, 120);
-        setTimeout(refreshMapLayout, 400);
         document.dispatchEvent(new CustomEvent("tuptup:map-ready"));
     }
 
@@ -503,6 +595,10 @@
 
     if (outlineApi?.resolve) {
         outlineApi.resolve().then((building) => {
+            if (!building?.outline?.length) {
+                console.warn("[TupTup] Brak osm_id budynku — podaj ?osmid= lub building_osm_way.");
+                return;
+            }
             applyBuildingOutline(building.outline);
             document.dispatchEvent(
                 new CustomEvent("tuptup:building", { detail: building })

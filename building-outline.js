@@ -1,22 +1,8 @@
 (function (global) {
     const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
-    /** Way C10 (160207067) — https://www.openstreetmap.org/way/160207067 */
-    const DEFAULT_BUILDING_LEVELS = 5;
-
-    const DEFAULT_BUILDING_OUTLINE = [
-        [52.2418507, 20.9456745],
-        [52.2415365, 20.9458358],
-        [52.2414068, 20.9459023],
-        [52.2413835, 20.9457813],
-        [52.2413902, 20.9457779],
-        [52.2413969, 20.9457744],
-        [52.2413837, 20.9457058],
-        [52.2415407, 20.9456252],
-        [52.2415792, 20.9456054],
-        [52.2418142, 20.9454848],
-        [52.2418314, 20.9455742],
-    ];
+    /** Gdy w OSM brak tagu building:levels */
+    const FALLBACK_BUILDING_LEVELS = 5;
 
     function geometryToOutline(geometry) {
         if (!Array.isArray(geometry) || geometry.length < 3) return null;
@@ -183,11 +169,53 @@
         return Number.isFinite(value) ? value : null;
     }
 
+    const NAME_TAG_KEYS = ["official_name", "name", "brand", "operator"];
+
+    function nameFromTags(tags) {
+        if (!tags) return null;
+        for (const key of NAME_TAG_KEYS) {
+            const value = tags[key];
+            if (value == null || value === "") continue;
+            const trimmed = String(value).trim();
+            if (trimmed) return trimmed;
+        }
+        return null;
+    }
+
+    function trimTag(value) {
+        if (value == null || value === "") return "";
+        return String(value).trim();
+    }
+
+    function addressFromTags(tags) {
+        if (!tags) return null;
+
+        const street = trimTag(tags["addr:street"]);
+        const housenumber = trimTag(tags["addr:housenumber"]);
+        const unit = trimTag(tags["addr:unit"]);
+        const postcode = trimTag(tags["addr:postcode"]);
+        const city = trimTag(tags["addr:city"]);
+
+        const streetLine = [street, housenumber, unit].filter(Boolean).join(" ");
+        const cityLine = [postcode, city].filter(Boolean).join(" ");
+        const parts = [streetLine, cityLine].filter(Boolean);
+
+        return parts.length ? parts.join(", ") : null;
+    }
+
+    function placeFromElement(element) {
+        const tags = element?.tags;
+        return {
+            name: nameFromTags(tags),
+            address: addressFromTags(tags),
+        };
+    }
+
     function levelsFromElement(element) {
         const levels = parsePositiveInt(element?.tags?.["building:levels"]);
         const minLevel = parseSignedInt(element?.tags?.["building:min_level"]);
         return {
-            levels: levels ?? DEFAULT_BUILDING_LEVELS,
+            levels: levels ?? FALLBACK_BUILDING_LEVELS,
             minLevel: minLevel ?? 0,
         };
     }
@@ -209,8 +237,9 @@
 
         const { levels, minLevel } = levelsFromElement(element);
         const maxLevel = levels - 1 + minLevel;
+        const { name, address } = placeFromElement(element);
 
-        return { outline, levels, minLevel, maxLevel };
+        return { outline, levels, minLevel, maxLevel, name, address };
     }
 
     function buildingFromResponse(data, spec) {
@@ -253,18 +282,9 @@
         return building;
     }
 
-    function defaultBuilding() {
-        return {
-            outline: DEFAULT_BUILDING_OUTLINE.slice(),
-            levels: DEFAULT_BUILDING_LEVELS,
-            minLevel: 0,
-            maxLevel: DEFAULT_BUILDING_LEVELS - 1,
-        };
-    }
-
     async function resolve() {
         const spec = parseOsmFromPage();
-        if (!spec) return defaultBuilding();
+        if (!spec) return null;
 
         try {
             const building = await fetchOutline(spec);
@@ -273,17 +293,19 @@
             console.warn("[TupTup] Nie udało się pobrać danych budynku z Overpass:", error);
         }
 
-        return defaultBuilding();
+        return null;
     }
 
     global.TupTupBuildingOutline = {
-        DEFAULT: DEFAULT_BUILDING_OUTLINE,
-        DEFAULT_LEVELS: DEFAULT_BUILDING_LEVELS,
+        FALLBACK_LEVELS: FALLBACK_BUILDING_LEVELS,
         OVERPASS_URL,
         parseOsmSpec,
         parseOsmFromUrl,
         parseOsmFromPage,
         levelsFromElement,
+        nameFromTags,
+        addressFromTags,
+        placeFromElement,
         fetchOutline,
         resolve,
     };

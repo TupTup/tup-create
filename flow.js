@@ -12,6 +12,11 @@
     const sheetSteps = [...form.querySelectorAll(".sheet-step")];
     const tabButtons = [...form.querySelectorAll("[data-step-tab]")];
     const deliveryFloorLabel = document.getElementById("delivery-floor-label");
+    const buildingPlace = document.getElementById("building-place");
+    const buildingPlaceName = document.getElementById("building-place-name");
+    const buildingPlaceAddress = document.getElementById("building-place-address");
+    const buildingNameInput = form.querySelector('input[name="building_name"]');
+    const buildingAddressInput = form.querySelector('input[name="building_address"]');
 
     const stepMeta = {
         parking: {
@@ -232,19 +237,12 @@
         alert("Lokalizacja zapisana (podgląd w konsoli deweloperskiej).");
     });
 
-    function initFloorPickerFromDefaults() {
-        const levels = window.TupTupBuildingOutline?.DEFAULT_LEVELS;
-        if (levels == null) return;
-        buildFloorPicker({ minLevel: 0, maxLevel: levels - 1 });
-    }
-
     let bootstrapped = false;
 
     function bootstrap() {
         if (bootstrapped) return;
         bootstrapped = true;
 
-        initFloorPickerFromDefaults();
         updateDeliveryFloorLabel();
         goToStep(0);
 
@@ -256,14 +254,38 @@
         }
     }
 
-    initFloorPickerFromDefaults();
-
     document.addEventListener("tuptup:map-ready", bootstrap, { once: true });
+    function applyBuildingPlace({ name, address }) {
+        const hasName = Boolean(name);
+        const hasAddress = Boolean(address);
+
+        if (buildingNameInput) buildingNameInput.value = name || "";
+        if (buildingAddressInput) buildingAddressInput.value = address || "";
+
+        if (buildingPlaceName) {
+            buildingPlaceName.textContent = name || "";
+            buildingPlaceName.hidden = !hasName;
+        }
+        if (buildingPlaceAddress) {
+            buildingPlaceAddress.textContent = address || "";
+            buildingPlaceAddress.hidden = !hasAddress;
+        }
+        if (buildingPlace) {
+            buildingPlace.hidden = !hasName && !hasAddress;
+        }
+    }
+
     document.addEventListener("tuptup:building", (event) => {
-        const { minLevel, maxLevel } = event.detail;
+        const { minLevel, maxLevel, name, address } = event.detail;
+        applyBuildingPlace({ name, address });
         buildFloorPicker({ minLevel, maxLevel });
         updateDeliveryFloorLabel();
     });
+
+    window.TupTupFlow = {
+        getStepIndex: () => stepIndex,
+        goToStep: (index) => goToStep(index),
+    };
 
     if (window.TupTupMap) bootstrap();
 })();

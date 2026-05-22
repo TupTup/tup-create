@@ -10,30 +10,43 @@
 <body>
     <form id="recipient-form" class="app app--flow">
         <header class="topbar">
-            <button type="button" class="icon-button icon-button--ghost" id="back-button" aria-label="Wróć do poprzedniego kroku">‹</button>
-            <div class="step-badge" id="step-badge">1 z 3</div>
-            <a class="cancel" href="#">Anuluj</a>
+            <button type="button" class="icon-button icon-button--ghost no-print" id="back-button" aria-label="Wróć do poprzedniego kroku">‹</button>
+            <div class="step-badge no-print" id="step-badge">1 z 3</div>
+            <div class="topbar-actions no-print">
+                <button type="button" class="print-link" id="print-button">Drukuj</button>
+                <a class="cancel no-print" href="#">Anuluj</a>
+            </div>
         </header>
 
-        <section class="hero-copy">
+        <section class="hero-copy no-print">
+            <div class="building-place" id="building-place" hidden>
+                <p class="building-place__name" id="building-place-name"></p>
+                <p class="building-place__address" id="building-place-address"></p>
+            </div>
             <h1 id="hero-title">Gdzie najlepiej zaparkować?</h1>
             <p id="hero-desc">Wskaż miejsce parkingowe, z którego najłatwiej dotrzeć do wejścia.</p>
         </section>
 
+        <header class="print-header print-only" aria-hidden="true">
+            <h1 class="print-header__name" id="print-building-name"></h1>
+            <p class="print-header__address" id="print-building-address"></p>
+        </header>
+
         <section class="map-area" data-map-mode="all" aria-label="Mapa z parkingiem, wejściem i celem dostawy">
             <div class="map-canvas" role="application" aria-label="Mapa OpenStreetMap"></div>
-            <div class="map-control-stack">
+            <div class="map-control-stack no-print">
                 <button type="button" class="map-control map-control-locate" aria-label="Moja lokalizacja">⌖</button>
                 <button type="button" class="map-control map-control-reset" aria-label="Wyśrodkuj mapę na budynku">2D</button>
             </div>
-            <fieldset class="floor-picker" id="floor-picker" hidden>
+            <fieldset class="floor-picker no-print" id="floor-picker" hidden>
                 <legend class="floor-picker-legend">Piętro</legend>
             </fieldset>
         </section>
 
         <div class="form-meta" aria-hidden="true">
-            <input type="hidden" name="building_osm_way" value="160207067">
-            <input type="hidden" name="building_name" value="C10">
+            <input type="hidden" name="building_osm_way" value="">
+            <input type="hidden" name="building_name" value="">
+            <input type="hidden" name="building_address" value="">
             <input type="hidden" name="parking_lat" value="">
             <input type="hidden" name="parking_lng" value="">
             <input type="hidden" name="entrance_lat" value="">
@@ -42,8 +55,8 @@
             <input type="hidden" name="delivery_lng" value="">
         </div>
 
-        <section class="sheet is-collapsed" data-default-collapsed data-expand-on-drop>
-            <button type="button" class="sheet-drag-zone" aria-expanded="false" aria-controls="sheet-panel" aria-label="Dotknij lub przeciągnij w górę, aby rozwinąć panel">
+        <section class="sheet is-collapsed print-sections" data-default-collapsed data-expand-on-drop>
+            <button type="button" class="sheet-drag-zone no-print" aria-expanded="false" aria-controls="sheet-panel" aria-label="Dotknij lub przeciągnij w górę, aby rozwinąć panel">
                 <span class="sheet-handle" aria-hidden="true"></span>
             </button>
             <div class="sheet-body" id="sheet-panel">
@@ -52,14 +65,14 @@
                         <div class="sheet-icon">P</div>
                         <div>
                             <h2>Wybrane miejsce</h2>
-                            <p>Erazma Ciołka 10, Warszawa</p>
+                            <p>Wybrane miejsce parkingowe</p>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="textarea-wrap">
                             <label class="label" for="parking_note">Opis opcjonalnie</label>
-                            <textarea id="parking_note" class="note" name="parking_note" maxlength="100" rows="3">Najlepiej od strony ulicy Górczewskiej, przy płocie.</textarea>
-                            <div class="counter" aria-live="polite">48/100</div>
+                            <textarea id="parking_note" class="note" name="parking_note" maxlength="100" rows="3" placeholder="Np. od strony ulicy, przy bramie…"></textarea>
+                            <div class="counter" aria-live="polite">0/100</div>
                         </div>
                         <div class="photo-card street" aria-label="Zdjęcie parkingu">
                             <input type="file" class="photo-input" name="parking_photo" accept="image/*" capture="environment" hidden>
@@ -73,16 +86,16 @@
                         <div class="sheet-icon"><span class="icon-entrance" aria-hidden="true"></span></div>
                         <div>
                             <h2>Wybrane wejście</h2>
-                            <p>Wejście C10</p>
+                            <p>Wybrane wejście</p>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="textarea-wrap">
                             <label class="label" for="entrance_note">Opis opcjonalnie</label>
-                            <textarea id="entrance_note" class="note" name="entrance_note" maxlength="100" rows="3">Wejście C10 znajduje się po lewej stronie od Żabki.</textarea>
-                            <div class="counter" aria-live="polite">40/100</div>
+                            <textarea id="entrance_note" class="note" name="entrance_note" maxlength="100" rows="3" placeholder="Np. po lewej od sklepu…"></textarea>
+                            <div class="counter" aria-live="polite">0/100</div>
                         </div>
-                        <div class="photo-card entrance" aria-label="Zdjęcie wejścia C10">
+                        <div class="photo-card entrance" aria-label="Zdjęcie wejścia">
                             <input type="file" class="photo-input" name="entrance_photo" accept="image/*" capture="environment" hidden>
                             <button type="button" class="camera-button" aria-label="Dodaj zdjęcie">▣</button>
                         </div>
@@ -94,14 +107,14 @@
                         <div class="sheet-icon">◎</div>
                         <div>
                             <h2>Miejsce dostawy</h2>
-                            <p id="delivery-floor-label">Sala 229, 2 piętro</p>
+                            <p id="delivery-floor-label">Piętro dostawy</p>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="textarea-wrap">
                             <label class="label" for="delivery_note">Szczegóły opcjonalnie</label>
-                            <textarea id="delivery_note" class="note" name="delivery_note" maxlength="100" rows="3">Sala 229, po prawej stronie korytarza, za drzwiami szklanymi.</textarea>
-                            <div class="counter" aria-live="polite">53/100</div>
+                            <textarea id="delivery_note" class="note" name="delivery_note" maxlength="100" rows="3" placeholder="Np. sala, korytarz, punkt orientacyjny…"></textarea>
+                            <div class="counter" aria-live="polite">0/100</div>
                         </div>
                         <div class="photo-card door" aria-label="Zdjęcie drzwi lub celu dostawy">
                             <input type="file" class="photo-input" name="delivery_photo" accept="image/*" capture="environment" hidden>
@@ -110,11 +123,11 @@
                     </div>
                 </section>
 
-                <button type="button" class="primary-button" id="step-action">Dalej →</button>
+                <button type="button" class="primary-button no-print" id="step-action">Dalej →</button>
             </div>
         </section>
 
-        <nav class="bottom-nav" aria-label="Postęp kreatora">
+        <nav class="bottom-nav no-print" aria-label="Postęp kreatora">
             <button type="button" class="nav-item nav-tab active" data-step-tab="parking" aria-current="step"><strong><span class="icon-parking" aria-hidden="true">P</span></strong><span>Parking</span></button>
             <button type="button" class="nav-item nav-tab nav-tab--locked" data-step-tab="entrance" disabled aria-disabled="true"><strong><span class="icon-entrance" aria-hidden="true"></span></strong><span>Wejście</span></button>
             <button type="button" class="nav-item nav-tab nav-tab--locked" data-step-tab="destination" disabled aria-disabled="true"><strong>◎</strong><span>Cel</span></button>
@@ -123,9 +136,10 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="building-outline.js"></script>
-    <script src="map-index.js?v=6"></script>
+    <script src="map-index.js?v=8"></script>
     <script src="sheet.js" defer></script>
     <script src="note.js" defer></script>
-    <script src="flow.js?v=6" defer></script>
+    <script src="flow.js?v=7" defer></script>
+    <script src="print.js" defer></script>
 </body>
 </html>

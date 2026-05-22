@@ -89,7 +89,7 @@ body {
 
 .topbar {
     display: grid;
-    grid-template-columns: 44px 1fr 70px;
+    grid-template-columns: 44px 1fr auto;
     align-items: center;
     padding: calc(8px + env(safe-area-inset-top, 0px)) 20px 14px;
     flex-shrink: 0;
@@ -115,16 +115,58 @@ body {
     font-size: 14px;
 }
 
-.cancel {
+.topbar-actions {
     justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.print-link {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.cancel {
     color: var(--text);
     text-decoration: none;
     font-size: 16px;
 }
 
+.print-only {
+    display: none;
+}
+
 .hero-copy {
     padding: 0 24px 18px;
     flex-shrink: 0;
+}
+
+.building-place {
+    margin-bottom: 12px;
+}
+
+.building-place__name {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text);
+}
+
+.building-place__address {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.35;
+    color: var(--muted);
 }
 
 .hero-copy h1 {
@@ -424,7 +466,7 @@ body {
 }
 
 .photo-card.entrance::after {
-    content: "C10";
+    content: "Wejście";
     position: absolute;
     inset: 22px 32px 22px;
     border: 3px solid rgba(0,0,0,.45);
@@ -663,7 +705,7 @@ body {
     grid-column: 2;
 }
 
-.app--flow .topbar .cancel {
+.app--flow .topbar .topbar-actions {
     grid-column: 3;
 }
 
@@ -791,4 +833,215 @@ body {
     .app--flow .map-area {
         flex: none;
     }
+}
+
+@media print {
+    @page {
+        margin: 14mm 12mm;
+        size: A4 portrait;
+    }
+
+    html,
+    body {
+        height: auto;
+        min-height: 0;
+        background: #fff;
+    }
+
+    .no-print,
+    .topbar {
+        display: none !important;
+    }
+
+    .print-only {
+        display: block !important;
+    }
+
+    .app,
+    .app--flow {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        box-shadow: none;
+        border: 0;
+    }
+
+    .print-header {
+        padding: 0 0 12px;
+        border-bottom: 2px solid #111;
+        margin-bottom: 14px;
+        page-break-after: avoid;
+    }
+
+    .print-header[hidden] {
+        display: none !important;
+    }
+
+    .print-header__name {
+        margin: 0 0 6px;
+        font-size: 22px;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+    }
+
+    .print-header__address {
+        margin: 0;
+        font-size: 14px;
+        color: var(--muted);
+        line-height: 1.4;
+    }
+
+    .map-area {
+        position: relative !important;
+        flex: none !important;
+        width: 100% !important;
+        height: 240px !important;
+        min-height: 240px !important;
+        margin: 0 0 16px;
+        border: 1px solid #ccc;
+        page-break-inside: avoid;
+        overflow: hidden;
+    }
+
+    .map-canvas,
+    .map-area .leaflet-container {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .map-area .leaflet-control-attribution {
+        font-size: 8px;
+    }
+
+    .print-sections {
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+    }
+
+    .print-sections .sheet-body {
+        display: block !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    .print-sections .sheet-step[hidden] {
+        display: block !important;
+    }
+
+    .print-sections .sheet-step {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin-bottom: 18px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid #e5e5e5;
+    }
+
+    .print-sections .sheet-step:last-child {
+        border-bottom: 0;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .print-sections .form-row {
+        grid-template-columns: 1fr 120px;
+    }
+
+    .print-sections .sheet-step:not(.print-has-note) .form-row:not(:has(.has-photo)) {
+        display: none !important;
+    }
+
+    .print-sections .sheet-step.print-has-note .form-row:not(:has(.has-photo)) {
+        grid-template-columns: 1fr;
+    }
+
+    .print-sections .textarea-wrap {
+        display: none !important;
+    }
+
+    .print-sections .sheet-step.print-has-note .textarea-wrap {
+        display: block !important;
+        border: 0;
+        padding: 0;
+        margin-bottom: 8px;
+    }
+
+    .print-sections .counter,
+    .print-sections .camera-button,
+    .print-sections .label {
+        display: none !important;
+    }
+
+    .print-sections .sheet-step.print-has-note .note {
+        display: block !important;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        font-size: 13px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        border: 0;
+    }
+
+    .print-sections .photo-card {
+        min-height: 100px;
+        break-inside: avoid;
+    }
+
+    .print-sections .photo-card:not(.has-photo) {
+        display: none !important;
+    }
+
+    .print-sections .sheet-head {
+        margin-bottom: 10px;
+    }
+
+    .print-sections .sheet h2 {
+        font-size: 17px;
+    }
+
+    .print-sections .sheet p {
+        font-size: 13px;
+    }
+}
+
+.is-printing .print-only {
+    display: block;
+}
+
+.is-printing .no-print {
+    display: none !important;
+}
+
+.is-printing .print-sections .sheet-step[hidden] {
+    display: block !important;
+}
+
+.is-printing .print-sections .sheet-body {
+    display: block !important;
+}
+
+.is-printing .app {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+
+.is-printing .map-area {
+    height: 240px;
+    min-height: 240px;
+    flex: none;
+}
+
+.is-printing .print-sections {
+    position: static;
+    margin: 0 12px;
 }
