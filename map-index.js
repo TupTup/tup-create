@@ -18,8 +18,15 @@
     let wizardStarted = false;
     let mapStarted = false;
     let pendingBuilding = null;
+    let buildingOsm = null;
     let outlineLoading = Boolean(outlineApi?.parseOsmFromPage?.());
     let resizeLayoutTimer = null;
+
+    let osmEntranceMarkers = [];
+    let osmEntrancesCache = null;
+    let osmEntrancesCacheKey = null;
+    let osmEntrancesLoading = false;
+    let selectedOsmEntranceId = null;
 
     const markers = {};
     const routeLines = {};
@@ -357,6 +364,88 @@
         return snapped;
     }
 
+    function setEntranceFromLatLng(lat, lng) {
+        if (!markers.entrance) return;
+        const snapped = closestPointOnBuildingOutline(L.latLng(lat, lng));
+        markers.entrance.setLatLng(snapped);
+        points.entrance = [snapped.lat, snapped.lng];
+        lastValidDrag.entrance = snapped;
+        updateRoutes();
+    }
+
+    function clearOsmEntranceMarkers() {
+        osmEntranceMarkers.forEach((marker) => {
+            if (map.hasLayer(marker)) map.removeLayer(marker);
+        });
+        osmEntranceMarkers = [];
+    }
+
+    function updateOsmEntranceMarkerStyles() {
+        osmEntranceMarkers.forEach((marker) => {
+            const selected = marker.tuptupOsmEntranceId === selectedOsmEntranceId;
+            marker.setStyle({
+                radius: selected ? 10 : 8,
+                weight: selected ? 3 : 2,
+                fillColor: selected ? "#111111" : "#ffffff",
+                fillOpacity: 1,
+            });
+        });
+    }
+
+    function showOsmEntranceMarkers(entrances) {
+        clearOsmEntranceMarkers();
+        entrances.forEach((entrance) => {
+            const marker = L.circleMarker([entrance.lat, entrance.lng], {
+                radius: 8,
+                className: "map-osm-entrance",
+                color: "#111111",
+                weight: 2,
+                fillColor: "#ffffff",
+                fillOpacity: 1,
+                interactive: true,
+            });
+            marker.tuptupOsmEntranceId = entrance.id;
+            marker.on("click", () => {
+                selectedOsmEntranceId = entrance.id;
+                setEntranceFromLatLng(entrance.lat, entrance.lng);
+                updateOsmEntranceMarkerStyles();
+            });
+            marker.addTo(map);
+            osmEntranceMarkers.push(marker);
+        });
+        updateOsmEntranceMarkerStyles();
+    }
+
+    function hideOsmEntrances() {
+        clearOsmEntranceMarkers();
+    }
+
+    async function loadOsmEntrances() {
+        if (!buildingOsm?.id || !outlineApi?.fetchEntrances) return;
+
+        const cacheKey = `${buildingOsm.type}:${buildingOsm.id}`;
+        if (osmEntrancesCacheKey === cacheKey && osmEntrancesCache) {
+            showOsmEntranceMarkers(osmEntrancesCache);
+            return;
+        }
+
+        if (osmEntrancesLoading) return;
+        osmEntrancesLoading = true;
+
+        try {
+            const entrances = await outlineApi.fetchEntrances(buildingOsm.type, buildingOsm.id);
+            osmEntrancesCacheKey = cacheKey;
+            osmEntrancesCache = entrances;
+            if (wizardStep === "entrance") {
+                showOsmEntranceMarkers(entrances);
+            }
+        } catch (error) {
+            console.warn("[TupTup] Błąd pobierania wejść z OSM:", error);
+        } finally {
+            osmEntrancesLoading = false;
+        }
+    }
+
     function snapParkingOutside(marker) {
         const snapped = pushOutsideBuilding(marker.getLatLng());
         marker.setLatLng(snapped);
@@ -418,6 +507,8 @@
             marker.on("dragend", () => {
                 const { lat, lng } = marker.getLatLng();
                 points[key] = [lat, lng];
+                if (key === "entrance") selectedOsmEntranceId = null;
+                updateOsmEntranceMarkerStyles();
                 updateRoutes();
             });
         });
@@ -608,6 +699,9 @@
 
         if (step === "entrance" && markers.entrance) {
             snapEntranceToOutline(markers.entrance);
+            loadOsmEntrances();
+        } else {
+            hideOsmEntrances();
         }
 
         Object.entries(routeLines).forEach(([id, line]) => {
@@ -672,6 +766,14 @@
 
     function commitBuilding(building) {
         if (!building?.outline?.length) return;
+        buildingOsm =
+            building.osm_type && building.osm_id != null
+                ? { type: building.osm_type, id: String(building.osm_id) }
+                : null;
+        osmEntrancesCache = null;
+        osmEntrancesCacheKey = null;
+        selectedOsmEntranceId = null;
+        hideOsmEntrances();
         applyBuildingOutline(building.outline);
         document.dispatchEvent(new CustomEvent("tuptup:building", { detail: building }));
     }

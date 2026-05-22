@@ -91,6 +91,33 @@
         return `[out:json][timeout:25];${osmType}(${id});out geom;`;
     }
 
+    function buildEntrancesOverpassQuery(type, id) {
+        const osmType = type === "relation" ? "relation" : "way";
+        return `[out:json][timeout:25];${osmType}(${id});node["entrance"](around:10);out geom;`;
+    }
+
+    function entrancesFromResponse(data) {
+        const elements = data?.elements;
+        if (!Array.isArray(elements)) return [];
+
+        const seen = new Set();
+        const entrances = [];
+        for (const el of elements) {
+            if (el.type !== "node" || el.lat == null || el.lon == null) continue;
+            if (!el.tags?.entrance) continue;
+            const key = String(el.id);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            entrances.push({
+                id: el.id,
+                lat: el.lat,
+                lng: el.lon,
+                entrance: el.tags.entrance,
+            });
+        }
+        return entrances;
+    }
+
     const EXCLUDED_BUILDING_VALUES = new Set(["part", "roof"]);
 
     function hasBuildingTag(tags) {
@@ -539,14 +566,7 @@
         return buildingFromElement(element, { spec, candidates });
     }
 
-    async function fetchOutline(spec) {
-        if (!spec?.id || !spec?.type) return null;
-
-        if (spec.type !== "way" && spec.type !== "relation" && spec.type !== "auto") {
-            throw new Error(`Nieobsługiwany typ OSM: ${spec.type}`);
-        }
-
-        const query = buildOverpassQuery(spec.type, spec.id);
+    async function postOverpass(query) {
         const response = await fetch(OVERPASS_URL, {
             method: "POST",
             headers: {
@@ -561,7 +581,18 @@
             throw new Error(`Overpass HTTP ${response.status}`);
         }
 
-        const data = await response.json();
+        return response.json();
+    }
+
+    async function fetchOutline(spec) {
+        if (!spec?.id || !spec?.type) return null;
+
+        if (spec.type !== "way" && spec.type !== "relation" && spec.type !== "auto") {
+            throw new Error(`Nieobsługiwany typ OSM: ${spec.type}`);
+        }
+
+        const query = buildOverpassQuery(spec.type, spec.id);
+        const data = await postOverpass(query);
         const building = buildingFromResponse(data, spec);
 
         if (!building) {
@@ -591,6 +622,14 @@
         return null;
     }
 
+    async function fetchEntrances(osmType, osmId) {
+        if (!osmId || (osmType !== "way" && osmType !== "relation")) return [];
+
+        const query = buildEntrancesOverpassQuery(osmType, osmId);
+        const data = await postOverpass(query);
+        return entrancesFromResponse(data);
+    }
+
     global.TupTupBuildingOutline = {
         FALLBACK_LEVELS: FALLBACK_BUILDING_LEVELS,
         OVERPASS_URL,
@@ -604,7 +643,10 @@
         isFullBuildingElement,
         pickBuildingElement,
         selectionMetaForElement,
+        buildEntrancesOverpassQuery,
+        entrancesFromResponse,
         fetchOutline,
+        fetchEntrances,
         resolve,
     };
 })(window);

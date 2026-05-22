@@ -214,6 +214,10 @@ body {
     background: rgba(255, 255, 255, 0.92);
 }
 
+.map-area .leaflet-overlay-pane path.map-osm-entrance {
+    cursor: pointer;
+}
+
 .map-area .leaflet-overlay-pane path.map-building-highlight {
     pointer-events: none;
 }
