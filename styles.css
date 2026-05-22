@@ -621,9 +621,26 @@ body {
     cursor: default;
 }
 
+.map-marker--parking:not(.map-marker--active) {
+    background: var(--surface);
+    color: var(--strong);
+    border: 3px solid var(--strong);
+}
+
+.map-marker--parking:not(.map-marker--active)::after {
+    background: var(--strong);
+}
+
 .map-marker--active {
     transform: scale(1.08);
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
+}
+
+.map-marker--active::after {
+    background: #000000;
 }
 
 .form-meta {
