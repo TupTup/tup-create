@@ -4,19 +4,8 @@
     if (!mapArea || !mapCanvas || typeof L === "undefined") return;
     if (mapArea.dataset.mapMode !== "all") return;
 
-    const buildingOutline = [
-        [52.2418507, 20.9456745],
-        [52.2415365, 20.9458358],
-        [52.2414068, 20.9459023],
-        [52.2413835, 20.9457813],
-        [52.2413902, 20.9457779],
-        [52.2413969, 20.9457744],
-        [52.2413837, 20.9457058],
-        [52.2415407, 20.9456252],
-        [52.2415792, 20.9456054],
-        [52.2418142, 20.9454848],
-        [52.2418314, 20.9455742],
-    ];
+    const outlineApi = window.TupTupBuildingOutline;
+    let buildingOutline = (outlineApi?.DEFAULT || []).slice();
 
     const points = {
         parking: [52.241418, 20.945742],
@@ -68,6 +57,14 @@
     }).addTo(map);
 
     layers.push(buildingLayer);
+
+    function applyBuildingOutline(outline) {
+        if (!outline?.length) return;
+        buildingOutline = outline;
+        buildingBounds = L.latLngBounds(buildingOutline);
+        buildingLayer.setLatLngs(buildingOutline);
+        refreshMapLayout();
+    }
 
     function markerIcon(type, label, active) {
         const activeClass = active ? " map-marker--active" : "";
@@ -134,7 +131,7 @@
         return line;
     }
 
-    const buildingBounds = L.latLngBounds(buildingOutline);
+    let buildingBounds = L.latLngBounds(buildingOutline);
     const lastValidDrag = {};
 
     function getBuildingCloseBounds() {
@@ -451,4 +448,8 @@
     }
 
     window.addEventListener("load", refreshMapLayout);
+
+    if (outlineApi?.resolve) {
+        outlineApi.resolve().then(applyBuildingOutline);
+    }
 })();
