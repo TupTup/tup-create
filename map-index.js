@@ -27,6 +27,7 @@
     let osmEntrancesCacheKey = null;
     let osmEntrancesLoading = false;
     let selectedOsmEntranceId = null;
+    let entranceUserAdjusted = false;
 
     const markers = {};
     const routeLines = {};
@@ -420,12 +421,36 @@
         clearOsmEntranceMarkers();
     }
 
+    function pickMainOsmEntrance(entrances) {
+        if (!entrances?.length) return null;
+        return (
+            entrances.find((entrance) => String(entrance.entrance || "").toLowerCase() === "main") ||
+            null
+        );
+    }
+
+    function applyDefaultOsmEntrance(entrances) {
+        if (entranceUserAdjusted) return;
+        const main = pickMainOsmEntrance(entrances);
+        if (!main) return;
+        selectedOsmEntranceId = main.id;
+        setEntranceFromLatLng(main.lat, main.lng);
+        updateOsmEntranceMarkerStyles();
+    }
+
+    function finishOsmEntrancesLoad(entrances) {
+        if (wizardStep === "entrance") {
+            showOsmEntranceMarkers(entrances);
+        }
+        applyDefaultOsmEntrance(entrances);
+    }
+
     async function loadOsmEntrances() {
         if (!buildingOsm?.id || !outlineApi?.fetchEntrances) return;
 
         const cacheKey = `${buildingOsm.type}:${buildingOsm.id}`;
         if (osmEntrancesCacheKey === cacheKey && osmEntrancesCache) {
-            showOsmEntranceMarkers(osmEntrancesCache);
+            finishOsmEntrancesLoad(osmEntrancesCache);
             return;
         }
 
@@ -436,9 +461,7 @@
             const entrances = await outlineApi.fetchEntrances(buildingOsm.type, buildingOsm.id);
             osmEntrancesCacheKey = cacheKey;
             osmEntrancesCache = entrances;
-            if (wizardStep === "entrance") {
-                showOsmEntranceMarkers(entrances);
-            }
+            finishOsmEntrancesLoad(entrances);
         } catch (error) {
             console.warn("[TupTup] Błąd pobierania wejść z OSM:", error);
         } finally {
@@ -507,7 +530,10 @@
             marker.on("dragend", () => {
                 const { lat, lng } = marker.getLatLng();
                 points[key] = [lat, lng];
-                if (key === "entrance") selectedOsmEntranceId = null;
+                if (key === "entrance") {
+                    selectedOsmEntranceId = null;
+                    entranceUserAdjusted = true;
+                }
                 updateOsmEntranceMarkerStyles();
                 updateRoutes();
             });
@@ -773,8 +799,10 @@
         osmEntrancesCache = null;
         osmEntrancesCacheKey = null;
         selectedOsmEntranceId = null;
+        entranceUserAdjusted = false;
         hideOsmEntrances();
         applyBuildingOutline(building.outline);
+        loadOsmEntrances();
         document.dispatchEvent(new CustomEvent("tuptup:building", { detail: building }));
     }
 
