@@ -17,6 +17,15 @@
     const buildingPlaceAddress = document.getElementById("building-place-address");
     const buildingNameInput = form.querySelector('input[name="building_name"]');
     const buildingAddressInput = form.querySelector('input[name="building_address"]');
+    const deliveryPlaceInput = form.querySelector('input[name="delivery_place"]');
+
+    function parseDeliveryPlaceFromUrl(search = window.location.search) {
+        const raw = new URLSearchParams(search).get("delivery_place");
+        if (raw == null) return "";
+        return String(raw).trim();
+    }
+
+    const deliveryPlace = parseDeliveryPlaceFromUrl() || "Miejsce dostawy";
 
     const stepMeta = {
         parking: {
@@ -102,7 +111,7 @@
     function updateDeliveryFloorLabel() {
         const selected = form.querySelector('input[name="delivery_floor"]:checked');
         if (deliveryFloorLabel && selected) {
-            deliveryFloorLabel.textContent = `Sala 229, ${floorLabel(selected.value)}`;
+            deliveryFloorLabel.textContent = `${deliveryPlace}, ${floorLabel(selected.value)}`;
         }
     }
 
@@ -297,6 +306,7 @@
         if (bootstrapped) return;
         bootstrapped = true;
 
+        if (deliveryPlaceInput) deliveryPlaceInput.value = deliveryPlace;
         updateDeliveryFloorLabel();
         goToStep(0);
 
