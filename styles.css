@@ -469,14 +469,20 @@ body {
     outline-offset: 2px;
 }
 
-.photo-card.add::after {
+.photo-card.add {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.photo-card.add::before {
     content: "";
-    position: absolute;
-    left: 50%;
-    top: 50%;
+    position: relative;
+    flex-shrink: 0;
     width: 40px;
     height: 40px;
-    transform: translate(-50%, -50%);
     background-color: rgba(0, 0, 0, 0.32);
     -webkit-mask-image: var(--icon-add-mask);
     mask-image: var(--icon-add-mask);
@@ -489,6 +495,17 @@ body {
     pointer-events: none;
 }
 
+.photo-card.add::after {
+    content: "Dodaj zdjęcie";
+    position: relative;
+    color: rgba(0, 0, 0, 0.38);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+    pointer-events: none;
+}
+
+.photo-card.has-photo::before,
 .photo-card.has-photo::after {
     display: none;
 }
