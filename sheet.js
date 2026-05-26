@@ -17,6 +17,10 @@
         return desktopQuery.matches;
     }
 
+    function consumePointerGesture(event) {
+        event.preventDefault();
+    }
+
     function setCollapsed(collapsed) {
         if (isDesktop()) {
             collapsed = false;
@@ -60,19 +64,32 @@
 
         if (deltaY > dragThreshold) {
             setCollapsed(true);
+            consumePointerGesture(event);
             return;
         }
         if (deltaY < -dragThreshold) {
             setCollapsed(false);
+            consumePointerGesture(event);
             return;
         }
         if (!moved) {
             const collapsed = sheet.classList.contains(collapsedClass);
             if (expandOnDropOnly) {
-                if (collapsed) setCollapsed(false);
+                if (collapsed) {
+                    setCollapsed(false);
+                    consumePointerGesture(event);
+                }
             } else {
                 setCollapsed(!collapsed);
+                consumePointerGesture(event);
             }
+        }
+    });
+
+    dragZone?.addEventListener("click", (event) => {
+        if (!isDesktop()) {
+            event.preventDefault();
+            event.stopPropagation();
         }
     });
 
