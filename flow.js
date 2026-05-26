@@ -196,15 +196,22 @@
     });
 
     form.querySelectorAll(".photo-card").forEach((card) => {
-        const button = card.querySelector(".camera-button");
         const input = card.querySelector(".photo-input");
-        if (!button || !input) return;
-
-        button.type = "button";
+        if (!input) return;
 
         let preview = card.querySelector(".photo-card-image");
 
-        button.addEventListener("click", () => input.click());
+        function openPicker() {
+            input.click();
+        }
+
+        card.addEventListener("click", openPicker);
+        card.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openPicker();
+            }
+        });
 
         input.addEventListener("change", () => {
             const file = input.files?.[0];
@@ -215,12 +222,13 @@
                 if (!preview) {
                     preview = document.createElement("img");
                     preview.className = "photo-card-image";
-                    card.insertBefore(preview, button);
+                    card.insertBefore(preview, input);
                 }
                 preview.src = reader.result;
                 preview.alt = card.getAttribute("aria-label") || "Zdjęcie";
                 card.classList.add("has-photo");
-                button.setAttribute("aria-label", "Zmień zdjęcie");
+                card.classList.remove("add");
+                card.setAttribute("aria-label", "Zmień zdjęcie");
             };
             reader.readAsDataURL(file);
         });
