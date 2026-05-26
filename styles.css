@@ -519,6 +519,46 @@ body {
     z-index: 1;
 }
 
+.photo-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    display: none;
+    place-items: center;
+    min-width: 32px;
+    min-height: 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.52);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #ffffff;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+.photo-card.has-photo .photo-remove {
+    display: grid;
+}
+
+.photo-remove:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+}
+
+@media (hover: hover) {
+    .photo-remove:hover {
+        background: rgba(0, 0, 0, 0.68);
+    }
+}
+
 .photo-input {
     display: none;
 }
@@ -1080,6 +1120,10 @@ body {
     }
 
     .print-sections .photo-card:not(.has-photo) {
+        display: none !important;
+    }
+
+    .print-sections .photo-remove {
         display: none !important;
     }
 
