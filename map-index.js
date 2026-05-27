@@ -1,7 +1,7 @@
 (function () {
     const mapArea = document.querySelector(".map-area");
     const mapCanvas = document.querySelector(".map-canvas");
-    if (!mapArea || !mapCanvas || typeof L === "undefined") return;
+    if (!mapArea || !mapCanvas || typeof maplibregl === "undefined") return;
     if (mapArea.dataset.mapMode !== "all") return;
 
     const outlineApi = window.TupTupBuildingOutline;
@@ -22,7 +22,6 @@
     let outlineLoading = Boolean(outlineApi?.parseOsmFromPage?.());
     let resizeLayoutTimer = null;
 
-    let osmEntranceMarkers = [];
     let osmEntrancesCache = null;
     let osmEntrancesCacheKey = null;
     let osmEntrancesLoading = false;
@@ -34,7 +33,6 @@
 
     const markers = {};
     const routeLines = {};
-    const layers = [];
     let wizardStep = "parking";
 
     const wizardConfig = {
@@ -68,28 +66,201 @@
     const BUILDING_FILL_INSET = 0.88;
     const PARKING_MAX_ZOOM = 19;
 
-    const map = L.map(mapCanvas, {
-        zoomControl: false,
-        attributionControl: true,
+    let buildingBounds = null;
+    const lastValidDrag = {};
+    function latLng(lat, lng) {
+        return { lat, lng };
+    }
+
+    function latLngFromCoords(coords) {
+        return latLng(coords[0], coords[1]);
+    }
+
+    function toLngLat(coords) {
+        return [coords[1], coords[0]];
+    }
+
+    function distanceMeters(a, b) {
+        const R = 6371000;
+        const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+        const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+        const lat1 = (a.lat * Math.PI) / 180;
+        const lat2 = (b.lat * Math.PI) / 180;
+        const x =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(x));
+    }
+
+    function latLngBoundsFromCoords(coords) {
+        const bounds = new maplibregl.LngLatBounds();
+        coords.forEach(([lat, lng]) => bounds.extend([lng, lat]));
+        return {
+            isValid() {
+                return !bounds.isEmpty();
+            },
+            getCenter() {
+                const center = bounds.getCenter();
+                return latLng(center.lat, center.lng);
+            },
+            getNorth() {
+                return bounds.getNorth();
+            },
+            getSouth() {
+                return bounds.getSouth();
+            },
+            getEast() {
+                return bounds.getEast();
+            },
+            getWest() {
+                return bounds.getWest();
+            },
+            toMapBounds() {
+                return bounds;
+            },
+        };
+    }
+
+    function closeRing(coords) {
+        if (!coords.length) return coords;
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        if (first[0] === last[0] && first[1] === last[1]) return coords;
+        return [...coords, first];
+    }
+
+    function buildingPolygonGeoJson(outline) {
+        const ring = closeRing(outline.map(([lat, lng]) => [lng, lat]));
+        return {
+            type: "Feature",
+            properties: {},
+            geometry: {
+                type: "Polygon",
+                coordinates: [ring],
+            },
+        };
+    }
+
+    function emptyFeatureCollection() {
+        return { type: "FeatureCollection", features: [] };
+    }
+
+    const map = new maplibregl.Map({
+        container: mapCanvas,
+        style: {
+            version: 8,
+            sources: {
+                osm: {
+                    type: "raster",
+                    tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                    tileSize: 256,
+                    maxzoom: 19,
+                    attribution:
+                        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                },
+                building: {
+                    type: "geojson",
+                    data: emptyFeatureCollection(),
+                },
+                routes: {
+                    type: "geojson",
+                    data: emptyFeatureCollection(),
+                },
+                "osm-entrances": {
+                    type: "geojson",
+                    data: emptyFeatureCollection(),
+                },
+                "user-location": {
+                    type: "geojson",
+                    data: emptyFeatureCollection(),
+                },
+            },
+            layers: [
+                {
+                    id: "osm-tiles",
+                    type: "raster",
+                    source: "osm",
+                    maxzoom: BUILDING_FILL_MAX_ZOOM,
+                },
+                {
+                    id: "building-fill",
+                    type: "fill",
+                    source: "building",
+                    paint: {
+                        "fill-color": "#ffffff",
+                        "fill-opacity": 0.72,
+                    },
+                },
+                {
+                    id: "building-outline",
+                    type: "line",
+                    source: "building",
+                    paint: {
+                        "line-color": "#111111",
+                        "line-width": 3,
+                    },
+                },
+                {
+                    id: "routes",
+                    type: "line",
+                    source: "routes",
+                    paint: {
+                        "line-color": "#111111",
+                        "line-width": 3,
+                        "line-dasharray": [2, 2],
+                    },
+                    layout: {
+                        "line-cap": "round",
+                    },
+                },
+                {
+                    id: "osm-entrances",
+                    type: "circle",
+                    source: "osm-entrances",
+                    paint: {
+                        "circle-radius": ["case", ["get", "selected"], 10, 8],
+                        "circle-color": [
+                            "case",
+                            ["get", "selected"],
+                            "#111111",
+                            "#ffffff",
+                        ],
+                        "circle-stroke-color": "#111111",
+                        "circle-stroke-width": ["case", ["get", "selected"], 3, 2],
+                    },
+                },
+                {
+                    id: "user-location",
+                    type: "circle",
+                    source: "user-location",
+                    paint: {
+                        "circle-radius": 7,
+                        "circle-color": "#ffffff",
+                        "circle-stroke-color": "#111111",
+                        "circle-stroke-width": 2,
+                    },
+                },
+            ],
+        },
+        center: toLngLat(MAP_FALLBACK_CENTER),
+        zoom: MAP_FALLBACK_ZOOM,
         maxZoom: BUILDING_FILL_MAX_ZOOM,
+        attributionControl: true,
     });
 
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: BUILDING_FILL_MAX_ZOOM,
-        maxNativeZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map);
+    function markerOnMap(marker) {
+        return Boolean(marker._map);
+    }
 
-    const buildingLayerStyle = {
-        className: "map-building-highlight",
-        color: "#111111",
-        weight: 3,
-        fillColor: "#ffffff",
-        fillOpacity: 0.72,
-        interactive: false,
-    };
+    function getMarkerLatLng(marker) {
+        const { lat, lng } = marker.getLngLat();
+        return latLng(lat, lng);
+    }
 
-    const buildingLayer = L.polygon([], buildingLayerStyle);
+    function setMarkerLatLng(marker, coords) {
+        const point = Array.isArray(coords) ? latLngFromCoords(coords) : coords;
+        marker.setLngLat([point.lng, point.lat]);
+    }
 
     function hasBuilding() {
         return buildingOutline.length >= 3 && buildingBounds?.isValid();
@@ -99,21 +270,52 @@
         return Boolean(pendingBuilding) || outlineLoading;
     }
 
+    function updateBuildingSource() {
+        const source = map.getSource("building");
+        if (!source || !buildingOutline.length) return;
+        source.setData(buildingPolygonGeoJson(buildingOutline));
+    }
+
+    function updateRoutesSource(visibleRouteIds = null) {
+        const source = map.getSource("routes");
+        if (!source) return;
+
+        const features = Object.entries(routeLines)
+            .filter(([id]) => !visibleRouteIds || visibleRouteIds.includes(id))
+            .map(([id, route]) => {
+                const from = getLatLng(route.tuptupFrom);
+                const to = getLatLng(route.tuptupTo);
+                return {
+                    type: "Feature",
+                    properties: { id },
+                    geometry: {
+                        type: "LineString",
+                        coordinates: [
+                            [from.lng, from.lat],
+                            [to.lng, to.lat],
+                        ],
+                    },
+                };
+            });
+
+        source.setData({ type: "FeatureCollection", features });
+    }
+
     function defaultPointsForOutline(outline) {
-        const bounds = L.latLngBounds(outline);
+        const bounds = latLngBoundsFromCoords(outline);
         const center = bounds.getCenter();
 
-        let entrance = L.latLng(outline[0]);
+        let entrance = latLngFromCoords(outline[0]);
         let longest = -1;
         for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
             const [lat1, lng1] = outline[j];
             const [lat2, lng2] = outline[i];
-            const a = L.latLng(lat1, lng1);
-            const b = L.latLng(lat2, lng2);
-            const len = a.distanceTo(b);
+            const a = latLng(lat1, lng1);
+            const b = latLng(lat2, lng2);
+            const len = distanceMeters(a, b);
             if (len > longest) {
                 longest = len;
-                entrance = L.latLng((lat1 + lat2) / 2, (lng1 + lng2) / 2);
+                entrance = latLng((lat1 + lat2) / 2, (lng1 + lng2) / 2);
             }
         }
         entrance = closestPointOnBuildingOutline(entrance);
@@ -122,7 +324,7 @@
         const dLat = entrance.lat - c.lat;
         const dLng = entrance.lng - c.lng;
         const len = Math.hypot(dLat, dLng) || 1e-9;
-        let parking = L.latLng(
+        let parking = latLng(
             entrance.lat + (dLat / len) * 0.00022,
             entrance.lng + (dLng / len) * 0.00022
         );
@@ -130,13 +332,13 @@
 
         let delivery = center;
         if (!pointInBuilding(delivery)) {
-            delivery = L.latLng(
+            delivery = latLng(
                 entrance.lat + (c.lat - entrance.lat) * 0.45,
                 entrance.lng + (c.lng - entrance.lng) * 0.45
             );
         }
         if (!pointInBuilding(delivery)) {
-            delivery = L.latLng(
+            delivery = latLng(
                 (bounds.getNorth() + bounds.getSouth()) / 2,
                 (bounds.getEast() + bounds.getWest()) / 2
             );
@@ -155,8 +357,8 @@
             points[key] = coords;
             const marker = markers[key];
             if (!marker) return;
-            marker.setLatLng(coords);
-            lastValidDrag[key] = marker.getLatLng();
+            setMarkerLatLng(marker, coords);
+            lastValidDrag[key] = getMarkerLatLng(marker);
         });
         updateRoutes();
         syncCoords();
@@ -165,21 +367,11 @@
     function applyBuildingOutline(outline) {
         if (!outline?.length) return;
         buildingOutline = outline;
-        buildingBounds = L.latLngBounds(buildingOutline);
-        if (!map.hasLayer(buildingLayer)) {
-            buildingLayer.addTo(map);
-            layers.push(buildingLayer);
-        }
-        buildingLayer.setLatLngs(buildingOutline);
-        buildingLayer.setStyle(buildingLayerStyle);
-        if (map.hasLayer(buildingLayer)) {
-            requestAnimationFrame(() => {
-                if (map.hasLayer(buildingLayer)) buildingLayer.bringToFront();
-            });
-        }
+        buildingBounds = latLngBoundsFromCoords(buildingOutline);
+        updateBuildingSource();
         if (buildingBounds?.isValid()) {
-            map.fitBounds(buildingBounds, {
-                padding: [20, 20],
+            map.fitBounds(buildingBounds.toMapBounds(), {
+                padding: 20,
                 maxZoom: PARKING_MAX_ZOOM,
                 animate: false,
             });
@@ -205,24 +397,32 @@
         applyWizardStep("parking");
     }
 
-    function markerIcon(type, label, active) {
+    function createMarkerElement(type, label, active) {
+        const host = document.createElement("div");
+        host.className = "map-marker-host";
         const activeClass = active ? " map-marker--active" : "";
-        return L.divIcon({
-            className: "map-marker-host",
-            html: `<div class="map-marker map-marker--${type} map-marker--draggable${activeClass}" role="img" aria-label="${label}">${label === "entry" ? "" : label}</div>`,
-            iconSize: [44, 58],
-            iconAnchor: [22, 58],
-        });
+        host.innerHTML = `<div class="map-marker map-marker--${type} map-marker--draggable${activeClass}" role="img" aria-label="${label}">${label === "entry" ? "" : label}</div>`;
+        return host;
+    }
+
+    function updateMarkerAppearance(marker, type, label, active) {
+        const el = marker.getElement()?.querySelector(".map-marker");
+        if (!el) return;
+        el.className = `map-marker map-marker--${type} map-marker--draggable${active ? " map-marker--active" : ""}`;
+        el.setAttribute("aria-label", label);
+        el.textContent = label === "entry" ? "" : label;
     }
 
     function getLatLng(key) {
         if (markers[key]) {
-            const { lat, lng } = markers[key].getLatLng();
-            points[key] = [lat, lng];
-            return markers[key].getLatLng();
+            const point = getMarkerLatLng(markers[key]);
+            points[key] = [point.lat, point.lng];
+            return point;
         }
-        if (points[key]) return L.latLng(points[key]);
-        return hasBuilding() ? buildingBounds.getCenter() : L.latLng(MAP_FALLBACK_CENTER);
+        if (points[key]) return latLngFromCoords(points[key]);
+        return hasBuilding()
+            ? buildingBounds.getCenter()
+            : latLngFromCoords(MAP_FALLBACK_CENTER);
     }
 
     function syncCoords() {
@@ -238,41 +438,30 @@
     }
 
     function updateRoutes() {
-        Object.values(routeLines).forEach((line) => {
-            const from = line.tuptupFrom;
-            const to = line.tuptupTo;
-            line.setLatLngs([getLatLng(from), getLatLng(to)]);
-        });
+        const config = wizardConfig[wizardStep];
+        updateRoutesSource(config?.routes || Object.keys(routeLines));
         syncCoords();
     }
 
     function addMarker(key, type, label) {
-        const marker = L.marker(points[key], {
-            icon: markerIcon(type, label, false),
+        const element = createMarkerElement(type, label, false);
+        const marker = new maplibregl.Marker({
+            element,
+            anchor: "bottom",
             draggable: true,
-            autoPan: true,
-            zIndexOffset: 500,
-        });
+            pitchAlignment: "map",
+            rotationAlignment: "map",
+        })
+            .setLngLat(toLngLat(points[key]))
+            .addTo(map);
 
         markers[key] = marker;
         return marker;
     }
 
     function addRoute(id, from, to) {
-        const line = L.polyline([getLatLng(from), getLatLng(to)], {
-            color: "#111111",
-            weight: 3,
-            dashArray: "8 8",
-            lineCap: "round",
-        });
-        line.tuptupFrom = from;
-        line.tuptupTo = to;
-        routeLines[id] = line;
-        return line;
+        routeLines[id] = { tuptupFrom: from, tuptupTo: to };
     }
-
-    let buildingBounds = null;
-    const lastValidDrag = {};
 
     function isBuildingFillStep() {
         return wizardStep === "entrance" || wizardStep === "destination";
@@ -301,16 +490,16 @@
         const dx = lng2 - lng1;
         const dy = lat2 - lat1;
         const lengthSq = dx * dx + dy * dy;
-        if (lengthSq === 0) return L.latLng(lat1, lng1);
+        if (lengthSq === 0) return latLng(lat1, lng1);
 
         let t = ((lng - lng1) * dx + (lat - lat1) * dy) / lengthSq;
         t = Math.max(0, Math.min(1, t));
-        return L.latLng(lat1 + t * dy, lng1 + t * dx);
+        return latLng(lat1 + t * dy, lng1 + t * dx);
     }
 
     function closestPointOnBuildingOutline(latlng) {
         if (!hasBuilding()) return latlng;
-        let best = L.latLng(buildingOutline[0]);
+        let best = latLngFromCoords(buildingOutline[0]);
         let bestDist = Infinity;
 
         for (let i = 0, j = buildingOutline.length - 1; i < buildingOutline.length; j = i++) {
@@ -324,7 +513,7 @@
                 lat2,
                 lng2
             );
-            const dist = candidate.distanceTo(latlng);
+            const dist = distanceMeters(candidate, latlng);
             if (dist < bestDist) {
                 bestDist = dist;
                 best = candidate;
@@ -344,14 +533,14 @@
         const len = Math.hypot(dLat, dLng) || 1e-9;
         let margin = 0.00012;
 
-        let candidate = L.latLng(
+        let candidate = latLng(
             onOutline.lat + (dLat / len) * margin,
             onOutline.lng + (dLng / len) * margin
         );
 
         for (let attempt = 0; pointInBuilding(candidate) && attempt < 8; attempt++) {
             margin *= 1.5;
-            candidate = L.latLng(
+            candidate = latLng(
                 onOutline.lat + (dLat / len) * margin,
                 onOutline.lng + (dLng / len) * margin
             );
@@ -361,8 +550,8 @@
     }
 
     function snapEntranceToOutline(marker) {
-        const snapped = closestPointOnBuildingOutline(marker.getLatLng());
-        marker.setLatLng(snapped);
+        const snapped = closestPointOnBuildingOutline(getMarkerLatLng(marker));
+        setMarkerLatLng(marker, snapped);
         points.entrance = [snapped.lat, snapped.lng];
         lastValidDrag.entrance = snapped;
         return snapped;
@@ -370,8 +559,8 @@
 
     function setEntranceFromLatLng(lat, lng) {
         if (!markers.entrance) return;
-        const snapped = closestPointOnBuildingOutline(L.latLng(lat, lng));
-        markers.entrance.setLatLng(snapped);
+        const snapped = closestPointOnBuildingOutline(latLng(lat, lng));
+        setMarkerLatLng(markers.entrance, snapped);
         points.entrance = [snapped.lat, snapped.lng];
         lastValidDrag.entrance = snapped;
         updateRoutes();
@@ -384,7 +573,7 @@
         let best = null;
         let bestDist = Infinity;
         entrances.forEach((entrance) => {
-            const dist = latlng.distanceTo(L.latLng(entrance.lat, entrance.lng));
+            const dist = distanceMeters(latlng, latLng(entrance.lat, entrance.lng));
             if (dist < bestDist) {
                 bestDist = dist;
                 best = entrance;
@@ -401,19 +590,19 @@
     }
 
     function snapEntranceToOutlineOnly(marker) {
-        const snapped = closestPointOnBuildingOutline(marker.getLatLng());
-        marker.setLatLng(snapped);
+        const snapped = closestPointOnBuildingOutline(getMarkerLatLng(marker));
+        setMarkerLatLng(marker, snapped);
         points.entrance = [snapped.lat, snapped.lng];
         lastValidDrag.entrance = snapped;
     }
 
     function constrainEntranceMarker(marker) {
-        const latlng = marker.getLatLng();
+        const latlng = getMarkerLatLng(marker);
         const nearest = nearestOsmEntrance(latlng);
 
         if (nearest && nearest.distance <= ENTRANCE_SNAP_METERS) {
             snapEntranceToOsmNode(nearest.entrance);
-            lastValidDrag.entrance = markers.entrance.getLatLng();
+            lastValidDrag.entrance = getMarkerLatLng(markers.entrance);
             return;
         }
 
@@ -427,7 +616,7 @@
             if (!reference && nearest) reference = nearest.entrance;
 
             if (reference) {
-                const refDist = latlng.distanceTo(L.latLng(reference.lat, reference.lng));
+                const refDist = distanceMeters(latlng, latLng(reference.lat, reference.lng));
                 if (refDist > ENTRANCE_DETACH_METERS) {
                     entranceSnapDetached = true;
                     selectedOsmEntranceId = null;
@@ -443,49 +632,41 @@
         }
     }
 
-    function clearOsmEntranceMarkers() {
-        osmEntranceMarkers.forEach((marker) => {
-            if (map.hasLayer(marker)) map.removeLayer(marker);
-        });
-        osmEntranceMarkers = [];
+    function osmEntrancesGeoJson(entrances) {
+        return {
+            type: "FeatureCollection",
+            features: entrances.map((entrance) => ({
+                type: "Feature",
+                properties: {
+                    id: entrance.id,
+                    selected: entrance.id === selectedOsmEntranceId,
+                },
+                geometry: {
+                    type: "Point",
+                    coordinates: [entrance.lng, entrance.lat],
+                },
+            })),
+        };
     }
 
     function updateOsmEntranceMarkerStyles() {
-        osmEntranceMarkers.forEach((marker) => {
-            const selected = marker.tuptupOsmEntranceId === selectedOsmEntranceId;
-            marker.setStyle({
-                radius: selected ? 10 : 8,
-                weight: selected ? 3 : 2,
-                fillColor: selected ? "#111111" : "#ffffff",
-                fillOpacity: 1,
-            });
-        });
+        const source = map.getSource("osm-entrances");
+        if (!source || !osmEntrancesCache?.length) return;
+        source.setData(osmEntrancesGeoJson(osmEntrancesCache));
     }
 
     function showOsmEntranceMarkers(entrances) {
-        clearOsmEntranceMarkers();
-        entrances.forEach((entrance) => {
-            const marker = L.circleMarker([entrance.lat, entrance.lng], {
-                radius: 8,
-                className: "map-osm-entrance",
-                color: "#111111",
-                weight: 2,
-                fillColor: "#ffffff",
-                fillOpacity: 1,
-                interactive: true,
-            });
-            marker.tuptupOsmEntranceId = entrance.id;
-            marker.on("click", () => {
-                snapEntranceToOsmNode(entrance);
-            });
-            marker.addTo(map);
-            osmEntranceMarkers.push(marker);
-        });
-        updateOsmEntranceMarkerStyles();
+        const source = map.getSource("osm-entrances");
+        if (!source) return;
+        source.setData(osmEntrancesGeoJson(entrances));
+        map.setLayoutProperty("osm-entrances", "visibility", "visible");
     }
 
     function hideOsmEntrances() {
-        clearOsmEntranceMarkers();
+        const source = map.getSource("osm-entrances");
+        if (!source) return;
+        source.setData(emptyFeatureCollection());
+        map.setLayoutProperty("osm-entrances", "visibility", "none");
     }
 
     function pickMainOsmEntrance(entrances) {
@@ -535,19 +716,19 @@
     }
 
     function snapParkingOutside(marker) {
-        const snapped = pushOutsideBuilding(marker.getLatLng());
-        marker.setLatLng(snapped);
+        const snapped = pushOutsideBuilding(getMarkerLatLng(marker));
+        setMarkerLatLng(marker, snapped);
         points.parking = [snapped.lat, snapped.lng];
         lastValidDrag.parking = snapped;
         return snapped;
     }
 
     function constrainMarkerPosition(key, marker) {
-        const latlng = marker.getLatLng();
+        const latlng = getMarkerLatLng(marker);
 
         if (wizardStep === "parking" && key === "parking") {
             if (pointInBuilding(latlng)) {
-                marker.setLatLng(lastValidDrag[key]);
+                setMarkerLatLng(marker, lastValidDrag[key]);
             } else {
                 lastValidDrag[key] = latlng;
             }
@@ -561,11 +742,17 @@
 
         if (wizardStep === "destination" && key === "delivery") {
             if (!pointInBuilding(latlng)) {
-                marker.setLatLng(lastValidDrag[key]);
+                setMarkerLatLng(marker, lastValidDrag[key]);
             } else {
                 lastValidDrag[key] = latlng;
             }
         }
+    }
+
+    function setMarkerDraggingState(marker, enabled) {
+        marker.setDraggable(enabled);
+        const el = marker.getElement()?.querySelector(".map-marker");
+        if (el) el.classList.toggle("map-marker--draggable", enabled);
     }
 
     function initMarkersAndRoutes() {
@@ -577,7 +764,8 @@
 
         Object.entries(markers).forEach(([key, marker]) => {
             marker.on("dragstart", () => {
-                lastValidDrag[key] = marker.getLatLng();
+                lastValidDrag[key] = getMarkerLatLng(marker);
+                map.getCanvasContainer().classList.add("map-dragging");
             });
 
             marker.on("drag", () => {
@@ -591,11 +779,12 @@
             });
 
             marker.on("dragend", () => {
+                map.getCanvasContainer().classList.remove("map-dragging");
                 if (wizardStep === "entrance" && key === "entrance") {
                     constrainEntranceMarker(marker);
                 }
-                const { lat, lng } = marker.getLatLng();
-                points[key] = [lat, lng];
+                const point = getMarkerLatLng(marker);
+                points[key] = [point.lat, point.lng];
                 updateOsmEntranceMarkerStyles();
                 updateRoutes();
             });
@@ -608,10 +797,10 @@
         const center = buildingBounds.getCenter();
         const latSpan = Math.max((buildingBounds.getNorth() - buildingBounds.getSouth()) * 0.35, 0.00055);
         const lngSpan = Math.max((buildingBounds.getEast() - buildingBounds.getWest()) * 0.35, 0.0007);
-        return L.latLngBounds(
+        return latLngBoundsFromCoords([
             [center.lat - latSpan, center.lng - lngSpan],
-            [center.lat + latSpan, center.lng + lngSpan]
-        );
+            [center.lat + latSpan, center.lng + lngSpan],
+        ]);
     }
 
     function getFitBounds() {
@@ -619,33 +808,15 @@
         return getParkingFitBounds();
     }
 
-    function getBuildingPathElement() {
-        const fromLayer =
-            typeof buildingLayer.getElement === "function" ? buildingLayer.getElement() : null;
-        if (fromLayer?.isConnected) return fromLayer;
-        return map.getPane("overlayPane")?.querySelector("path.map-building-highlight") || null;
-    }
-
     function getBuildingScreenBox() {
-        const pathEl = getBuildingPathElement();
-        if (!pathEl) return null;
-
-        const mapRect = map.getContainer().getBoundingClientRect();
-        const pb = pathEl.getBBox();
-        const ctm = pathEl.getScreenCTM();
-        if (!ctm) return null;
+        if (!hasBuilding()) return null;
 
         const xs = [];
         const ys = [];
-        [
-            [pb.x, pb.y],
-            [pb.x + pb.width, pb.y],
-            [pb.x + pb.width, pb.y + pb.height],
-            [pb.x, pb.y + pb.height],
-        ].forEach(([x, y]) => {
-            const pt = new DOMPoint(x, y).matrixTransform(ctm);
-            xs.push(pt.x - mapRect.left);
-            ys.push(pt.y - mapRect.top);
+        buildingOutline.forEach(([lat, lng]) => {
+            const pt = map.project([lng, lat]);
+            xs.push(pt.x);
+            ys.push(pt.y);
         });
 
         const minX = Math.min(...xs);
@@ -663,8 +834,8 @@
 
     function fitBuildingBoundsFallback(padding = 48) {
         if (!buildingBounds?.isValid()) return false;
-        map.fitBounds(buildingBounds, {
-            padding: [padding, padding],
+        map.fitBounds(buildingBounds.toMapBounds(), {
+            padding,
             maxZoom: BUILDING_FILL_MAX_ZOOM,
             animate: false,
         });
@@ -673,12 +844,13 @@
 
     function fitBuildingFillView() {
         if (!hasBuilding()) return false;
-        map.invalidateSize(true);
-        const size = map.getSize();
+        map.resize();
+        const canvas = map.getCanvas();
+        const size = { x: canvas.clientWidth, y: canvas.clientHeight };
         if (size.x < 10 || size.y < 10) return false;
 
-        const center = buildingLayer.getBounds().getCenter();
-        map.setView(center, map.getZoom(), { animate: false });
+        const center = buildingBounds.getCenter();
+        map.jumpTo({ center: [center.lng, center.lat], zoom: map.getZoom() });
 
         const box = getBuildingScreenBox();
         if (!box || box.width < 2 || box.height < 2) {
@@ -687,9 +859,12 @@
 
         const fitRatio = Math.min(size.x / box.width, size.y / box.height) * BUILDING_FILL_INSET;
         const targetZoom = Math.min(map.getZoom() + Math.log2(fitRatio), BUILDING_FILL_MAX_ZOOM);
-        const targetCenter = map.containerPointToLatLng(L.point(box.centerX, box.centerY));
+        const targetCenter = map.unproject([box.centerX, box.centerY]);
 
-        map.setView(targetCenter, targetZoom, { animate: false });
+        map.jumpTo({
+            center: [targetCenter.lng, targetCenter.lat],
+            zoom: targetZoom,
+        });
         return true;
     }
 
@@ -700,18 +875,19 @@
     }
 
     function centerBuildingInMapView() {
-        map.invalidateSize(true);
+        map.resize();
         const box = getBuildingScreenBox();
         if (!box) return fitBuildingBoundsFallback(32);
 
-        const size = map.getSize();
+        const canvas = map.getCanvas();
+        const size = { x: canvas.clientWidth, y: canvas.clientHeight };
         if (size.x < 10 || size.y < 10) return false;
 
         const offsetX = size.x / 2 - box.centerX;
         const offsetY = size.y / 2 - box.centerY;
         if (Math.abs(offsetX) < 1 && Math.abs(offsetY) < 1) return true;
 
-        map.panBy(L.point(offsetX, offsetY), { animate: false });
+        map.panBy([offsetX, offsetY], { animate: false });
         return true;
     }
 
@@ -724,7 +900,10 @@
     function fitMapView() {
         if (!hasBuilding()) {
             if (awaitingBuilding()) return;
-            map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
+            map.jumpTo({
+                center: toLngLat(MAP_FALLBACK_CENTER),
+                zoom: MAP_FALLBACK_ZOOM,
+            });
             return;
         }
 
@@ -735,22 +914,20 @@
 
         const bounds = getFitBounds();
         if (!bounds?.isValid()) {
-            map.setView(buildingBounds.getCenter(), 17);
+            const center = buildingBounds.getCenter();
+            map.jumpTo({ center: [center.lng, center.lat], zoom: 17 });
             return;
         }
 
-        map.fitBounds(bounds, { padding: [16, 16], maxZoom: PARKING_MAX_ZOOM });
+        map.fitBounds(bounds.toMapBounds(), { padding: 16, maxZoom: PARKING_MAX_ZOOM });
         if (wizardStep === "print") {
             schedulePrintMapCenter();
         }
     }
 
     function refreshMapLayout() {
-        map.invalidateSize(true);
+        map.resize();
         if (!hasBuilding() && awaitingBuilding()) {
-            if (!map.getCenter()) {
-                map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
-            }
             return;
         }
         fitMapView();
@@ -769,15 +946,12 @@
             const label = type === "entry" ? "entry" : type === "target" ? "◎" : "P";
 
             if (visible) {
-                if (!map.hasLayer(marker)) marker.addTo(map);
-                marker.setIcon(markerIcon(type, label, active));
-                marker.setZIndexOffset(active ? 1000 : 500);
-                if (marker.dragging) {
-                    if (config.draggable.includes(key)) marker.dragging.enable();
-                    else marker.dragging.disable();
-                }
-            } else if (map.hasLayer(marker)) {
-                map.removeLayer(marker);
+                if (!markerOnMap(marker)) marker.addTo(map);
+                updateMarkerAppearance(marker, type, label, active);
+                marker.getElement().style.zIndex = active ? "1000" : "500";
+                setMarkerDraggingState(marker, config.draggable.includes(key));
+            } else if (markerOnMap(marker)) {
+                marker.remove();
             }
         });
 
@@ -796,15 +970,7 @@
             hideOsmEntrances();
         }
 
-        Object.entries(routeLines).forEach(([id, line]) => {
-            if (config.routes.includes(id)) {
-                line.setLatLngs([getLatLng(line.tuptupFrom), getLatLng(line.tuptupTo)]);
-                if (!map.hasLayer(line)) line.addTo(map);
-            } else if (map.hasLayer(line)) {
-                map.removeLayer(line);
-            }
-        });
-
+        updateRoutesSource(config.routes);
         updateRoutes();
         syncCoords();
         fitMapView();
@@ -813,24 +979,68 @@
     const locateButton = mapArea.querySelector(".map-control-locate");
     const resetButton = mapArea.querySelector(".map-control-reset");
 
+    function showUserLocation(lat, lng) {
+        const source = map.getSource("user-location");
+        if (!source) return;
+        source.setData({
+            type: "FeatureCollection",
+            features: [
+                {
+                    type: "Feature",
+                    properties: {},
+                    geometry: {
+                        type: "Point",
+                        coordinates: [lng, lat],
+                    },
+                },
+            ],
+        });
+        map.setLayoutProperty("user-location", "visibility", "visible");
+    }
+
+    function hideUserLocation() {
+        const source = map.getSource("user-location");
+        if (!source) return;
+        source.setData(emptyFeatureCollection());
+        map.setLayoutProperty("user-location", "visibility", "none");
+    }
+
     locateButton?.addEventListener("click", () => {
-        map.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
-    });
+        if (!navigator.geolocation) return;
 
-    let userLocationLayer = null;
-
-    map.on("locationfound", (event) => {
-        if (userLocationLayer) map.removeLayer(userLocationLayer);
-        userLocationLayer = L.circleMarker(event.latlng, {
-            radius: 7,
-            color: "#111111",
-            weight: 2,
-            fillColor: "#ffffff",
-            fillOpacity: 1,
-        }).addTo(map);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const { latitude, longitude } = position.coords;
+                map.flyTo({
+                    center: [longitude, latitude],
+                    zoom: 18,
+                });
+                showUserLocation(latitude, longitude);
+            },
+            (error) => {
+                console.warn("[TupTup] Nie udało się ustalić lokalizacji:", error);
+            },
+            { enableHighAccuracy: true }
+        );
     });
 
     resetButton?.addEventListener("click", fitMapView);
+
+    map.on("click", "osm-entrances", (event) => {
+        const feature = event.features?.[0];
+        const id = feature?.properties?.id;
+        if (id == null || !osmEntrancesCache) return;
+        const entrance = osmEntrancesCache.find((item) => String(item.id) === String(id));
+        if (entrance) snapEntranceToOsmNode(entrance);
+    });
+
+    map.on("mouseenter", "osm-entrances", () => {
+        map.getCanvas().style.cursor = "pointer";
+    });
+
+    map.on("mouseleave", "osm-entrances", () => {
+        map.getCanvas().style.cursor = "";
+    });
 
     const resizeObserver = new ResizeObserver(() => {
         clearTimeout(resizeLayoutTimer);
@@ -882,7 +1092,10 @@
     function startMap() {
         mapStarted = true;
         if (!hasBuilding()) {
-            map.setView(MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM);
+            map.jumpTo({
+                center: toLngLat(MAP_FALLBACK_CENTER),
+                zoom: MAP_FALLBACK_ZOOM,
+            });
         }
         flushPendingBuilding();
         scheduleMapLayoutRetries();
@@ -912,7 +1125,11 @@
             });
     }
 
-    // Po DOMContentLoaded — wtedy skrypty `defer` (flow.js) są już wykonane.
+    map.on("load", () => {
+        hideOsmEntrances();
+        hideUserLocation();
+    });
+
     document.addEventListener("DOMContentLoaded", startMap);
 
     window.addEventListener("load", scheduleMapLayoutRetries);

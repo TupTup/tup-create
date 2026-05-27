@@ -199,14 +199,14 @@ body {
     z-index: 0;
 }
 
-.map-area .leaflet-container {
+.map-area .maplibregl-map {
     width: 100%;
     height: 100%;
     background: #f5f5f5;
     font: inherit;
 }
 
-.map-area .leaflet-control-attribution {
+.map-area .maplibregl-ctrl-attrib {
     margin: 0 6px 6px;
     padding: 2px 6px;
     border-radius: 8px;
@@ -215,12 +215,8 @@ body {
     background: rgba(255, 255, 255, 0.92);
 }
 
-.map-area .leaflet-overlay-pane path.map-osm-entrance {
-    cursor: pointer;
-}
-
-.map-area .leaflet-overlay-pane path.map-building-highlight {
-    pointer-events: none;
+.map-area .maplibregl-canvas-container.map-dragging .map-marker--draggable {
+    cursor: grabbing;
 }
 
 .map-control-stack {
@@ -253,9 +249,6 @@ body {
     touch-action: none;
 }
 
-.leaflet-dragging .map-marker--draggable {
-    cursor: grabbing;
-}
 
 .map-marker {
     width: 44px;
@@ -1031,12 +1024,12 @@ body {
     }
 
     .map-canvas,
-    .map-area .leaflet-container {
+    .map-area .maplibregl-map {
         width: 100% !important;
         height: 100% !important;
     }
 
-    .map-area .leaflet-control-attribution {
+    .map-area .maplibregl-ctrl-attrib {
         font-size: 8px;
     }
 
