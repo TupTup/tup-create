@@ -6,6 +6,9 @@
     --muted: #666666;
     --line: #dddddd;
     --strong: #000000;
+    --parking: #2563eb;
+    --entrance: #f59e0b;
+    --destination: #10b981;
     --shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
     --radius-xl: 28px;
     --radius-lg: 20px;
@@ -202,10 +205,12 @@ body {
     border-radius: 999px;
     display: grid;
     place-items: center;
-    background: var(--strong);
     color: #ffffff;
-    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+    border: 3px solid transparent;
     position: relative;
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
 }
 
 .map-marker svg {
@@ -220,22 +225,60 @@ body {
     width: 13px;
     height: 13px;
     border-radius: 999px;
-    background: var(--strong);
     bottom: -14px;
     left: 50%;
     transform: translateX(-50%);
 }
 
-.map-marker--entry,
-.map-marker--target {
-    background: var(--surface);
-    color: var(--strong);
-    border: 3px solid var(--strong);
+.map-marker--parking {
+    background: var(--parking);
+    border-color: var(--parking);
+    box-shadow: 0 8px 22px rgba(37, 99, 235, 0.28);
 }
 
-.map-marker--entry::after,
+.map-marker--parking::after {
+    background: var(--parking);
+}
+
+.map-marker--entry {
+    background: var(--entrance);
+    border-color: var(--entrance);
+    box-shadow: 0 8px 22px rgba(245, 158, 11, 0.28);
+}
+
+.map-marker--entry::after {
+    background: var(--entrance);
+}
+
+.map-marker--target {
+    background: var(--destination);
+    border-color: var(--destination);
+    box-shadow: 0 8px 22px rgba(16, 185, 129, 0.28);
+}
+
 .map-marker--target::after {
-    background: var(--strong);
+    background: var(--destination);
+}
+
+.map-marker--active.map-marker--parking {
+    transform: scale(1.08);
+    box-shadow:
+        0 0 0 4px rgba(37, 99, 235, 0.2),
+        0 10px 26px rgba(37, 99, 235, 0.35);
+}
+
+.map-marker--active.map-marker--entry {
+    transform: scale(1.08);
+    box-shadow:
+        0 0 0 4px rgba(245, 158, 11, 0.2),
+        0 10px 26px rgba(245, 158, 11, 0.35);
+}
+
+.map-marker--active.map-marker--target {
+    transform: scale(1.08);
+    box-shadow:
+        0 0 0 4px rgba(16, 185, 129, 0.2),
+        0 10px 26px rgba(16, 185, 129, 0.35);
 }
 
 .sheet {
@@ -546,28 +589,6 @@ body {
 /* Single-page flow (index.html) */
 .sheet-step[hidden] {
     display: none;
-}
-
-.map-marker--parking:not(.map-marker--active) {
-    background: var(--surface);
-    color: var(--strong);
-    border: 3px solid var(--strong);
-}
-
-.map-marker--parking:not(.map-marker--active)::after {
-    background: var(--strong);
-}
-
-.map-marker--active {
-    transform: scale(1.08);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
-    background: #000000;
-    color: #ffffff;
-    border-color: #000000;
-}
-
-.map-marker--active::after {
-    background: #000000;
 }
 
 .form-meta {

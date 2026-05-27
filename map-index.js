@@ -288,7 +288,7 @@
                     type: "line",
                     source: "inset-polygon",
                     paint: {
-                        "line-color": "#c85a5a",
+                        "line-color": "#10b981",
                         "line-width": 1.5,
                         "line-opacity": 0.7,
                     },
@@ -302,7 +302,15 @@
                     type: "line",
                     source: "routes",
                     paint: {
-                        "line-color": "#111111",
+                        "line-color": [
+                            "match",
+                            ["get", "id"],
+                            "parking-entrance",
+                            "#2563eb",
+                            "entrance-delivery",
+                            "#10b981",
+                            "#111111",
+                        ],
                         "line-width": 3,
                         "line-dasharray": [2, 2],
                     },
@@ -319,10 +327,10 @@
                         "circle-color": [
                             "case",
                             ["get", "selected"],
-                            "#111111",
+                            "#f59e0b",
                             "#ffffff",
                         ],
-                        "circle-stroke-color": "#111111",
+                        "circle-stroke-color": "#f59e0b",
                         "circle-stroke-width": ["case", ["get", "selected"], 3, 2],
                     },
                 },

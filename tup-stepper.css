@@ -1,8 +1,6 @@
 /* Tup creation wizard — horizontal progress stepper */
 
 .tup-stepper {
-    --stepper-active: var(--strong, #000000);
-    --stepper-active-bg: var(--strong, #000000);
     --stepper-inactive-bg: var(--surface-soft, #f1f1f1);
     --stepper-inactive-icon: var(--muted, #666666);
     --stepper-inactive-text: var(--muted, #666666);
@@ -52,8 +50,12 @@
     transition: background 0.2s ease;
 }
 
-.tup-stepper__step.is-reached:not(:first-child)::before {
-    background: var(--stepper-active);
+.tup-stepper__step:nth-child(2).is-reached::before {
+    background: var(--parking);
+}
+
+.tup-stepper__step:nth-child(3).is-reached::before {
+    background: var(--destination);
 }
 
 .tup-stepper__item {
@@ -75,8 +77,20 @@
     transition: opacity 0.2s ease;
 }
 
-.tup-stepper__item:focus-visible {
-    outline: 2px solid var(--stepper-active);
+.tup-stepper__item[data-step-tab="parking"]:focus-visible {
+    outline: 2px solid var(--parking);
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+.tup-stepper__item[data-step-tab="entrance"]:focus-visible {
+    outline: 2px solid var(--entrance);
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+.tup-stepper__item[data-step-tab="destination"]:focus-visible {
+    outline: 2px solid var(--destination);
     outline-offset: 4px;
     border-radius: 8px;
 }
@@ -108,26 +122,53 @@
     stroke-width: 2;
 }
 
-.tup-stepper__item.active .tup-stepper__circle {
-    background: var(--stepper-active-bg);
+/* Aktywny krok — pełny kolor + delikatny glow */
+.tup-stepper__item[data-step-tab="parking"].active .tup-stepper__circle {
+    background: var(--parking);
     color: #ffffff;
     transform: scale(1.04);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    box-shadow:
+        0 0 0 4px rgba(37, 99, 235, 0.2),
+        0 4px 16px rgba(37, 99, 235, 0.35);
 }
 
-.tup-stepper__item.is-complete .tup-stepper__circle {
-    background: var(--stepper-active-bg);
+.tup-stepper__item[data-step-tab="entrance"].active .tup-stepper__circle {
+    background: var(--entrance);
+    color: #ffffff;
+    transform: scale(1.04);
+    box-shadow:
+        0 0 0 4px rgba(245, 158, 11, 0.2),
+        0 4px 16px rgba(245, 158, 11, 0.35);
+}
+
+.tup-stepper__item[data-step-tab="destination"].active .tup-stepper__circle {
+    background: var(--destination);
+    color: #ffffff;
+    transform: scale(1.04);
+    box-shadow:
+        0 0 0 4px rgba(16, 185, 129, 0.2),
+        0 4px 16px rgba(16, 185, 129, 0.35);
+}
+
+/* Ukończone kroki — pełny kolor, bez glow */
+.tup-stepper__item[data-step-tab="parking"].is-complete .tup-stepper__circle {
+    background: var(--parking);
+    color: #ffffff;
+}
+
+.tup-stepper__item[data-step-tab="entrance"].is-complete .tup-stepper__circle {
+    background: var(--entrance);
+    color: #ffffff;
+}
+
+.tup-stepper__item[data-step-tab="destination"].is-complete .tup-stepper__circle {
+    background: var(--destination);
     color: #ffffff;
 }
 
 .tup-stepper__item.is-complete:not(.active) .tup-stepper__circle {
     transform: none;
     box-shadow: none;
-}
-
-.tup-stepper__item.is-complete .tup-stepper__label {
-    color: var(--text, #111111);
-    font-weight: 600;
 }
 
 .tup-stepper__label {
@@ -142,9 +183,26 @@
         font-weight 0.2s ease;
 }
 
-.tup-stepper__item.active .tup-stepper__label {
-    color: var(--text, #111111);
+.tup-stepper__item[data-step-tab="parking"].active .tup-stepper__label,
+.tup-stepper__item[data-step-tab="parking"].is-complete .tup-stepper__label {
+    color: var(--parking);
     font-weight: 700;
+}
+
+.tup-stepper__item[data-step-tab="entrance"].active .tup-stepper__label,
+.tup-stepper__item[data-step-tab="entrance"].is-complete .tup-stepper__label {
+    color: var(--entrance);
+    font-weight: 700;
+}
+
+.tup-stepper__item[data-step-tab="destination"].active .tup-stepper__label,
+.tup-stepper__item[data-step-tab="destination"].is-complete .tup-stepper__label {
+    color: var(--destination);
+    font-weight: 700;
+}
+
+.tup-stepper__item.is-complete:not(.active) .tup-stepper__label {
+    font-weight: 600;
 }
 
 @media (min-width: 768px) {
