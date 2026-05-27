@@ -51,7 +51,7 @@
 }
 
 .tup-stepper__step:nth-child(2).is-reached::before {
-    background: var(--parking);
+    background: var(--entrance);
 }
 
 .tup-stepper__step:nth-child(3).is-reached::before {
