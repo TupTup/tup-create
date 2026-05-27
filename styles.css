@@ -480,36 +480,30 @@ body {
     font-weight: 800;
 }
 
-.elevator-panel {
-    min-height: 0;
+.app--flow .form-row.form-row--floor {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: clamp(200px, 38dvh, 340px);
+    min-width: 0;
+    overflow: visible;
+}
+
+.app--flow .form-row.form-row--floor .elevator-panel {
     display: flex;
     flex-direction: column;
     align-items: center;
+    flex: 1;
+    min-height: 0;
     gap: 8px;
+    overflow-x: visible;
     overflow-y: auto;
-    overflow-x: hidden;
-    padding: 4px 12px 8px;
+    padding: 4px 12px 8px 22px;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
 }
 
-.app--flow .form-row--floor {
-    grid-template-rows: minmax(0, 1fr);
-    min-height: clamp(200px, 38dvh, 340px);
-    padding-left: 0;
-}
-
-.app--flow .form-row--floor .elevator-panel {
-    flex: 1;
-    min-height: 0;
-}
-
-.app--flow .form-row--floor .elevator-floor {
-    min-height: 60px;
-    padding: 10px 12px 8px;
-}
-
-.elevator-floor {
+.app--flow .form-row.form-row--floor button.elevator-floor {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -517,48 +511,53 @@ body {
     justify-content: center;
     gap: 4px;
     width: min(100%, 168px);
-    min-height: 72px;
-    padding: 12px 14px 10px;
+    min-height: 60px;
+    margin: 0;
+    padding: 10px 12px 8px;
     border: 2px solid transparent;
     border-radius: 16px;
     background: var(--surface-soft);
     color: var(--text);
     font: inherit;
+    text-align: center;
     cursor: pointer;
     flex-shrink: 0;
+    -webkit-appearance: none;
+    appearance: none;
     transition:
         background 0.22s ease,
         border-color 0.22s ease,
         color 0.22s ease,
-        transform 0.22s ease,
         opacity 0.22s ease,
         box-shadow 0.22s ease;
 }
 
-.elevator-floor__digit {
-    font-size: clamp(36px, 9vw, 44px);
+.app--flow .elevator-floor__digit {
+    display: block;
+    font-size: clamp(32px, 8vw, 40px);
     font-weight: 800;
     line-height: 1;
     letter-spacing: -0.04em;
-    transition: transform 0.22s ease, color 0.22s ease;
 }
 
-.elevator-floor__caption {
+.app--flow .elevator-floor__caption {
+    display: block;
     font-size: 13px;
     font-weight: 600;
     color: var(--muted);
     line-height: 1.2;
-    transition: color 0.22s ease;
 }
 
-.elevator-floor.is-selected {
+.app--flow .elevator-floor.is-selected,
+.app--flow .elevator-floor[aria-selected="true"] {
     background: #fff7ed;
     border-color: var(--floor);
     color: var(--floor);
     box-shadow: 0 4px 18px rgba(245, 158, 11, 0.14);
 }
 
-.elevator-floor.is-selected::before {
+.app--flow .elevator-floor.is-selected::before,
+.app--flow .elevator-floor[aria-selected="true"]::before {
     content: "";
     position: absolute;
     left: 0;
@@ -568,38 +567,36 @@ body {
     border-top: 8px solid transparent;
     border-bottom: 8px solid transparent;
     border-left: 9px solid var(--floor);
+    pointer-events: none;
 }
 
-.elevator-floor.is-selected .elevator-floor__caption {
+.app--flow .elevator-floor.is-selected .elevator-floor__caption,
+.app--flow .elevator-floor[aria-selected="true"] .elevator-floor__caption {
     color: var(--floor);
 }
 
-.elevator-floor.is-pressed {
+.app--flow .elevator-floor.is-pressed {
     animation: elevator-floor-press 0.32s ease;
 }
 
 @keyframes elevator-floor-press {
     0% {
         opacity: 1;
-        transform: scale(1);
     }
     40% {
-        opacity: 0.92;
-        transform: scale(0.98);
+        opacity: 0.88;
     }
     100% {
         opacity: 1;
-        transform: scale(1);
     }
 }
 
-.elevator-floor:focus-visible {
+.app--flow .elevator-floor:focus-visible {
     outline: 2px solid var(--floor);
     outline-offset: 2px;
 }
 
-.elevator-floor:not(.is-selected):active {
-    transform: scale(0.99);
+.app--flow .elevator-floor:not(.is-selected):active {
     opacity: 0.94;
 }
 
@@ -770,7 +767,7 @@ body {
         border-bottom: 0;
     }
 
-    .app--flow .form-row--floor {
+    .app--flow .form-row.form-row--floor {
         min-height: clamp(240px, 48dvh, 400px);
     }
 

@@ -186,7 +186,10 @@
             elevatorPanel.append(button);
         });
 
-        setSelectedFloor(preferred, { scroll: true });
+        setSelectedFloor(preferred, { scroll: false });
+        requestAnimationFrame(() => {
+            setSelectedFloor(preferred, { scroll: true });
+        });
     }
 
     function updateDeliveryFloorLabel() {
