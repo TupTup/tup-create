@@ -89,6 +89,7 @@
     let wizardStarted = false;
     let mapStarted = false;
     let pendingBuilding = null;
+    let buildingFloorRange = null;
     let buildingOsm = null;
     let outlineLoading = Boolean(outlineApi?.parseOsmFromPage?.());
     let resizeLayoutTimer = null;
@@ -122,6 +123,12 @@
             routes: ["parking-entrance"],
             draggable: ["entrance"],
             active: "entrance",
+        },
+        floor: {
+            markers: ["parking", "entrance"],
+            routes: ["parking-entrance"],
+            draggable: [],
+            active: null,
         },
         destination: {
             markers: ["parking", "entrance", "delivery"],
@@ -1251,10 +1258,17 @@
             };
         },
         hasBuilding: () => hasBuilding(),
+        getBuildingFloorRange: () =>
+            buildingFloorRange ? { ...buildingFloorRange } : null,
     };
 
     function commitBuilding(building) {
         if (!building?.outline?.length) return;
+        buildingFloorRange = {
+            minLevel: building.minLevel,
+            maxLevel: building.maxLevel,
+            levels: building.levels,
+        };
         buildingOsm =
             building.osm_type && building.osm_id != null
                 ? { type: building.osm_type, id: String(building.osm_id) }

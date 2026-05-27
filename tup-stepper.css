@@ -25,7 +25,7 @@
     list-style: none;
     margin: 0;
     padding: 14px var(--stepper-inline-padding) 16px;
-    max-width: 420px;
+    max-width: 480px;
     margin-inline: auto;
 }
 
@@ -51,10 +51,18 @@
 }
 
 .tup-stepper__step:nth-child(2).is-reached::before {
-    background: var(--entrance);
+    background: var(--parking);
 }
 
 .tup-stepper__step:nth-child(3).is-reached::before {
+    background: var(--entrance);
+}
+
+.tup-stepper__step:nth-child(4).is-reached::before {
+    background: var(--floor);
+}
+
+.tup-stepper__step:nth-child(5).is-reached::before {
     background: var(--destination);
 }
 
@@ -85,6 +93,12 @@
 
 .tup-stepper__item[data-step-tab="entrance"]:focus-visible {
     outline: 2px solid var(--entrance);
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+.tup-stepper__item[data-step-tab="floor"]:focus-visible {
+    outline: 2px solid var(--floor);
     outline-offset: 4px;
     border-radius: 8px;
 }
@@ -122,7 +136,6 @@
     stroke-width: 2;
 }
 
-/* Aktywny krok — pełny kolor + delikatny glow */
 .tup-stepper__item[data-step-tab="parking"].active .tup-stepper__circle {
     background: var(--parking);
     color: #ffffff;
@@ -134,6 +147,15 @@
 
 .tup-stepper__item[data-step-tab="entrance"].active .tup-stepper__circle {
     background: var(--entrance);
+    color: #ffffff;
+    transform: scale(1.04);
+    box-shadow:
+        0 0 0 4px rgba(16, 185, 129, 0.2),
+        0 4px 16px rgba(16, 185, 129, 0.35);
+}
+
+.tup-stepper__item[data-step-tab="floor"].active .tup-stepper__circle {
+    background: var(--floor);
     color: #ffffff;
     transform: scale(1.04);
     box-shadow:
@@ -150,7 +172,6 @@
         0 4px 16px rgba(16, 185, 129, 0.35);
 }
 
-/* Ukończone kroki — pełny kolor, bez glow */
 .tup-stepper__item[data-step-tab="parking"].is-complete .tup-stepper__circle {
     background: var(--parking);
     color: #ffffff;
@@ -158,6 +179,11 @@
 
 .tup-stepper__item[data-step-tab="entrance"].is-complete .tup-stepper__circle {
     background: var(--entrance);
+    color: #ffffff;
+}
+
+.tup-stepper__item[data-step-tab="floor"].is-complete .tup-stepper__circle {
+    background: var(--floor);
     color: #ffffff;
 }
 
@@ -192,6 +218,12 @@
 .tup-stepper__item[data-step-tab="entrance"].active .tup-stepper__label,
 .tup-stepper__item[data-step-tab="entrance"].is-complete .tup-stepper__label {
     color: var(--entrance);
+    font-weight: 700;
+}
+
+.tup-stepper__item[data-step-tab="floor"].active .tup-stepper__label,
+.tup-stepper__item[data-step-tab="floor"].is-complete .tup-stepper__label {
+    color: var(--floor);
     font-weight: 700;
 }
 

@@ -7,7 +7,8 @@
     --line: #dddddd;
     --strong: #000000;
     --parking: #2563eb;
-    --entrance: #f59e0b;
+    --entrance: #10b981;
+    --floor: #f59e0b;
     --destination: #10b981;
     --shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
     --radius-xl: 28px;
@@ -479,67 +480,127 @@ body {
     font-weight: 800;
 }
 
-.floor-picker {
-    position: absolute;
-    right: 16px;
-    top: calc(18px + 50px + 10px + 50px + 14px);
-    z-index: 1000;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: var(--surface);
-    border-radius: 14px;
-    box-shadow: 0 6px 20px rgba(0,0,0,.10);
-    overflow: hidden;
+.elevator-panel {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 12px 8px;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
 }
 
-.floor-picker-legend {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+.app--flow .form-row--floor {
+    grid-template-rows: minmax(0, 1fr);
+    min-height: clamp(200px, 38dvh, 340px);
+    padding-left: 0;
 }
 
-.floor-option {
-    display: block;
+.app--flow .form-row--floor .elevator-panel {
+    flex: 1;
+    min-height: 0;
+}
+
+.app--flow .form-row--floor .elevator-floor {
+    min-height: 60px;
+    padding: 10px 12px 8px;
+}
+
+.elevator-floor {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: min(100%, 168px);
+    min-height: 72px;
+    padding: 12px 14px 10px;
+    border: 2px solid transparent;
+    border-radius: 16px;
+    background: var(--surface-soft);
+    color: var(--text);
+    font: inherit;
     cursor: pointer;
+    flex-shrink: 0;
+    transition:
+        background 0.22s ease,
+        border-color 0.22s ease,
+        color 0.22s ease,
+        transform 0.22s ease,
+        opacity 0.22s ease,
+        box-shadow 0.22s ease;
 }
 
-.floor-option input {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-    margin: 0;
-    pointer-events: none;
-}
-
-.floor-option span {
-    width: 42px;
-    height: 40px;
-    display: grid;
-    place-items: center;
+.elevator-floor__digit {
+    font-size: clamp(36px, 9vw, 44px);
     font-weight: 800;
-    border-bottom: 1px solid #eeeeee;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    transition: transform 0.22s ease, color 0.22s ease;
 }
 
-.floor-option:last-child span {
-    border-bottom: 0;
+.elevator-floor__caption {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    line-height: 1.2;
+    transition: color 0.22s ease;
 }
 
-.floor-option:has(input:checked) span {
-    background: var(--strong);
-    color: #fff;
+.elevator-floor.is-selected {
+    background: #fff7ed;
+    border-color: var(--floor);
+    color: var(--floor);
+    box-shadow: 0 4px 18px rgba(245, 158, 11, 0.14);
 }
 
-.floor-option input:focus-visible + span {
-    outline: 2px solid var(--strong);
-    outline-offset: -2px;
+.elevator-floor.is-selected::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    --elevator-marker-gap: 8px;
+    transform: translate(calc(-100% - var(--elevator-marker-gap)), -50%);
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-left: 9px solid var(--floor);
+}
+
+.elevator-floor.is-selected .elevator-floor__caption {
+    color: var(--floor);
+}
+
+.elevator-floor.is-pressed {
+    animation: elevator-floor-press 0.32s ease;
+}
+
+@keyframes elevator-floor-press {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    40% {
+        opacity: 0.92;
+        transform: scale(0.98);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.elevator-floor:focus-visible {
+    outline: 2px solid var(--floor);
+    outline-offset: 2px;
+}
+
+.elevator-floor:not(.is-selected):active {
+    transform: scale(0.99);
+    opacity: 0.94;
 }
 
 .help-strip {
@@ -707,6 +768,10 @@ body {
         min-height: 0;
         border-top: 0;
         border-bottom: 0;
+    }
+
+    .app--flow .form-row--floor {
+        min-height: clamp(240px, 48dvh, 400px);
     }
 
     .sheet {

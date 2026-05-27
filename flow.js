@@ -2,15 +2,17 @@
     const form = document.getElementById("recipient-form");
     if (!form) return;
 
-    const STEPS = ["parking", "entrance", "destination"];
+    const STEPS = ["parking", "entrance", "floor", "destination"];
     const STEP_ICONS = {
         parking: "circle-parking",
         entrance: "door-closed",
+        floor: "layers",
         destination: "map-pin",
     };
     const heroTitle = document.getElementById("hero-title");
     const heroDesc = document.getElementById("hero-desc");
-    const floorPicker = document.getElementById("floor-picker");
+    const elevatorPanel = document.getElementById("elevator-panel");
+    const deliveryFloorInput = document.getElementById("delivery-floor-input");
     const backButton = document.getElementById("back-button");
     const stepAction = document.getElementById("step-action");
     const sheetSteps = [...form.querySelectorAll(".sheet-step")];
@@ -42,6 +44,11 @@
             desc: "Wskaż właściwe wejście do budynku. Dodaj zdjęcie, aby ułatwić kurierowi.",
             nextLabel: "Dalej →",
         },
+        floor: {
+            title: "Wybierz piętro",
+            desc: "Na które piętro mamy dostarczyć przesyłkę?",
+            nextLabel: "Dalej →",
+        },
         destination: {
             title: "Gdzie dostarczyć przesyłkę?",
             desc: "Wskaż dokładne miejsce dostawy w budynku.",
@@ -52,67 +59,140 @@
     let stepIndex = 0;
     let maxStepIndex = 0;
 
+    const wizardState = {
+        deliveryFloor: null,
+        floorRange: null,
+    };
+
+    /** Zakres pięter z OSM (building:min_level, building:levels) — ustawiany przy tuptup:building */
+    let osmFloorRange = null;
+
     const DEFAULT_FLOOR = "2";
+
+    function applyOsmFloorRange({ minLevel, maxLevel, levels } = {}) {
+        const min = Number(minLevel);
+        const max = Number(maxLevel);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return false;
+
+        osmFloorRange = {
+            minLevel: min,
+            maxLevel: max,
+            levels: Number.isFinite(Number(levels)) ? Number(levels) : max - min + 1,
+        };
+        wizardState.floorRange = { min, max };
+        return true;
+    }
+
+    function resolveOsmFloorRange() {
+        if (osmFloorRange) return osmFloorRange;
+        const fromMap = window.TupTupMap?.getBuildingFloorRange?.();
+        if (fromMap && applyOsmFloorRange(fromMap)) return osmFloorRange;
+        return null;
+    }
+
+    function syncElevatorPanelFromOsm() {
+        const range = resolveOsmFloorRange();
+        if (!range) return;
+        buildElevatorPanel(range);
+    }
 
     function floorLabel(value) {
         if (value === "0") return "parter";
-        if (value === "-1") return "piwnica";
+        if (value === "-1") return "parking";
         return `${value} piętro`;
     }
 
-    function floorDisplayLabel(level) {
-        if (level === 0) return "0";
-        if (level === -1) return "-1";
-        return String(level);
+    function floorSubtitle(level) {
+        if (level === -1) return "Parking";
+        if (level === 0) return "Parter";
+        return `Piętro ${level}`;
     }
 
-    function buildFloorPicker({ minLevel, maxLevel }) {
-        if (!floorPicker) return;
+    function getSelectedFloor() {
+        return wizardState.deliveryFloor ?? deliveryFloorInput?.value ?? null;
+    }
+
+    function setSelectedFloor(value, { scroll = false, animate = false } = {}) {
+        if (value == null || !elevatorPanel) return;
+        wizardState.deliveryFloor = String(value);
+        if (deliveryFloorInput) deliveryFloorInput.value = wizardState.deliveryFloor;
+
+        elevatorPanel.querySelectorAll(".elevator-floor").forEach((button) => {
+            const selected = button.dataset.level === wizardState.deliveryFloor;
+            button.classList.toggle("is-selected", selected);
+            button.setAttribute("aria-selected", String(selected));
+            if (selected) {
+                if (scroll) {
+                    button.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+                }
+                if (animate) {
+                    button.classList.remove("is-pressed");
+                    void button.offsetWidth;
+                    button.classList.add("is-pressed");
+                    window.setTimeout(() => button.classList.remove("is-pressed"), 320);
+                }
+            }
+        });
+
+        updateDeliveryFloorLabel();
+    }
+
+    function buildElevatorPanel({ minLevel, maxLevel } = {}) {
+        if (!elevatorPanel) return;
 
         const min = Number(minLevel);
         const max = Number(maxLevel);
         if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return;
 
-        const previous = form.querySelector('input[name="delivery_floor"]:checked')?.value;
-        floorPicker.querySelectorAll(".floor-option").forEach((node) => node.remove());
+        wizardState.floorRange = { min, max };
 
         const levels = [];
         for (let level = max; level >= min; level -= 1) {
             levels.push(level);
         }
 
+        const previous = getSelectedFloor();
         const preferred =
             previous && levels.some((level) => String(level) === previous)
                 ? previous
                 : levels.includes(Number(DEFAULT_FLOOR))
                   ? DEFAULT_FLOOR
-                  : String(levels[Math.floor(levels.length / 2)] ?? maxLevel);
+                  : String(levels[Math.floor(levels.length / 2)] ?? max);
+
+        elevatorPanel.replaceChildren();
 
         levels.forEach((level) => {
             const value = String(level);
-            const label = document.createElement("label");
-            label.className = "floor-option";
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "elevator-floor";
+            button.dataset.level = value;
+            button.setAttribute("role", "option");
+            button.setAttribute("aria-selected", "false");
 
-            const input = document.createElement("input");
-            input.type = "radio";
-            input.name = "delivery_floor";
-            input.value = value;
-            if (value === preferred) input.checked = true;
+            const digit = document.createElement("span");
+            digit.className = "elevator-floor__digit";
+            digit.textContent = value;
 
-            const span = document.createElement("span");
-            span.textContent = floorDisplayLabel(level);
+            const caption = document.createElement("span");
+            caption.className = "elevator-floor__caption";
+            caption.textContent = floorSubtitle(level);
 
-            label.append(input, span);
-            floorPicker.append(label);
+            button.append(digit, caption);
+            button.addEventListener("click", () => {
+                setSelectedFloor(value, { scroll: true, animate: true });
+            });
 
-            input.addEventListener("change", updateDeliveryFloorLabel);
+            elevatorPanel.append(button);
         });
+
+        setSelectedFloor(preferred, { scroll: true });
     }
 
     function updateDeliveryFloorLabel() {
-        const selected = form.querySelector('input[name="delivery_floor"]:checked');
+        const selected = getSelectedFloor();
         if (deliveryFloorLabel && selected) {
-            deliveryFloorLabel.textContent = `${deliveryPlace}, ${floorLabel(selected.value)}`;
+            deliveryFloorLabel.textContent = `${deliveryPlace}, ${floorLabel(selected)}`;
         }
     }
 
@@ -162,6 +242,7 @@
         stepIndex = index;
         const step = STEPS[stepIndex];
         const meta = stepMeta[step];
+        const isFloorStep = step === "floor";
 
         sheetSteps.forEach((panel) => {
             panel.hidden = panel.dataset.step !== step;
@@ -169,8 +250,6 @@
 
         if (heroTitle) heroTitle.textContent = meta.title;
         if (heroDesc) heroDesc.textContent = meta.desc;
-
-        if (floorPicker) floorPicker.hidden = step !== "destination";
 
         if (backButton) {
             const onFirstStep = stepIndex === 0;
@@ -185,8 +264,18 @@
         }
 
         updateNavState();
-        window.TupTupSheet?.collapse();
+        if (isFloorStep) {
+            window.TupTupSheet?.expand();
+        } else {
+            window.TupTupSheet?.collapse();
+        }
         window.TupTupMap?.setWizardStep(step);
+
+        if (isFloorStep) {
+            syncElevatorPanelFromOsm();
+            const selected = elevatorPanel?.querySelector(".elevator-floor.is-selected");
+            selected?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        }
     }
 
     function nextStep() {
@@ -334,6 +423,7 @@
         bootstrapped = true;
 
         if (deliveryPlaceInput) deliveryPlaceInput.value = deliveryPlace;
+        syncElevatorPanelFromOsm();
         updateDeliveryFloorLabel();
         goToStep(0);
 
@@ -367,10 +457,11 @@
     }
 
     document.addEventListener("tuptup:building", (event) => {
-        const { minLevel, maxLevel, name, address } = event.detail;
+        const { minLevel, maxLevel, levels, name, address } = event.detail;
         applyBuildingPlace({ name, address });
-        buildFloorPicker({ minLevel, maxLevel });
-        updateDeliveryFloorLabel();
+        if (applyOsmFloorRange({ minLevel, maxLevel, levels })) {
+            buildElevatorPanel(osmFloorRange);
+        }
         const step = STEPS[stepIndex];
         if (step) window.TupTupMap?.setWizardStep(step);
     });
@@ -378,6 +469,9 @@
     window.TupTupFlow = {
         getStepIndex: () => stepIndex,
         goToStep: (index) => goToStep(index),
+        getWizardState: () => ({ ...wizardState, deliveryFloor: getSelectedFloor() }),
+        getSelectedFloor,
+        setSelectedFloor,
     };
 
     if (window.TupTupMap) bootstrap();
