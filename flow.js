@@ -102,10 +102,9 @@
         return `${value} piętro`;
     }
 
-    function floorSubtitle(level) {
-        if (level === -1) return "Parking";
+    function floorCaption(level) {
         if (level === 0) return "Parter";
-        return `Piętro ${level}`;
+        return "Piętro";
     }
 
     function getSelectedFloor() {
@@ -179,8 +178,9 @@
 
             const caption = document.createElement("span");
             caption.className = "elevator-floor__caption";
-            caption.textContent = floorSubtitle(level);
+            caption.textContent = floorCaption(level);
 
+            button.setAttribute("aria-label", `${floorCaption(level)} ${value}`);
             button.append(digit, caption);
             button.addEventListener("click", () => {
                 setSelectedFloor(value, { scroll: true, animate: true });
