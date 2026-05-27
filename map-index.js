@@ -124,7 +124,7 @@
 
     const STEP_COLORS = {
         parking: "#2563eb",
-        entrance: "#10b981",
+        entrance: "#555555",
         floor: "#f59e0b",
         destination: "#10b981",
     };
@@ -358,10 +358,10 @@
                         "circle-color": [
                             "case",
                             ["get", "selected"],
-                            "#f59e0b",
+                            "#555555",
                             "#ffffff",
                         ],
-                        "circle-stroke-color": "#f59e0b",
+                        "circle-stroke-color": "#555555",
                         "circle-stroke-width": ["case", ["get", "selected"], 3, 2],
                     },
                 },

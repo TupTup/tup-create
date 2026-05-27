@@ -7,7 +7,7 @@
     --line: #dddddd;
     --strong: #000000;
     --parking: #2563eb;
-    --entrance: #10b981;
+    --entrance: #555555;
     --floor: #f59e0b;
     --destination: #10b981;
     --shadow: 0 18px 45px rgba(0, 0, 0, 0.12);
@@ -259,7 +259,7 @@ body {
 .map-marker--entry {
     background: var(--entrance);
     border-color: var(--entrance);
-    box-shadow: 0 8px 22px rgba(245, 158, 11, 0.28);
+    box-shadow: 0 8px 22px rgba(85, 85, 85, 0.28);
 }
 
 .map-marker--entry::after {
@@ -286,8 +286,8 @@ body {
 .map-marker--active.map-marker--entry {
     transform: scale(1.08);
     box-shadow:
-        0 0 0 4px rgba(245, 158, 11, 0.2),
-        0 10px 26px rgba(245, 158, 11, 0.35);
+        0 0 0 4px rgba(85, 85, 85, 0.2),
+        0 10px 26px rgba(85, 85, 85, 0.35);
 }
 
 .map-marker--active.map-marker--target {
