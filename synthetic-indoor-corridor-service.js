@@ -2,9 +2,9 @@
  * SyntheticIndoorCorridorService – eksperymentalne heurystyczne prowadzenie indoor.
  *
  * Wejście: buildingPolygon + entrancePoint + destinationPoint.
- * Bez ręcznych korytarzy, BIM ani CAD – generuje synthetic corridors i trasę centerline.
+ * Bez ręcznych korytarzy, BIM ani CAD – routing po inset polygon (bez centerline).
  *
- * Etapy: orientacja → inset polygon → routing po obrysie inset → LineString.
+ * Etapy: orientacja → inset polygon → routing → LineString.
  */
 (function (global) {
     const turf = global.turf;
@@ -113,7 +113,7 @@
                       Math.min(orientedBBox.maxSpanMeters * MAX_SNAP_RATIO, 55)
                   );
 
-        const syntheticCorridors = buildInsetCorridorNetwork(insetResult.polygon);
+        const syntheticCorridors = buildDirectCorridorNetwork(entrancePoint, destinationPoint);
 
         const corridorSegments = extractCorridorSegments(syntheticCorridors);
         const entranceSnap = snapPointToCorridors(
@@ -137,7 +137,7 @@
             insetFallback: insetResult.fallback,
             insetAreaRatio: computeAreaRatio(insetResult.polygon, buildingPolygon),
             corridorSegmentCount: corridorSegments.length,
-            corridorSource: "inset-polygon-outline",
+            corridorSource: "entrance-destination-direct",
             entranceSnapDistanceMeters: entranceSnap.distanceMeters,
             destinationSnapDistanceMeters: destinationSnap.distanceMeters,
             maxSnapDistanceMeters,
@@ -305,29 +305,13 @@
         return inner / outer;
     }
 
-    function buildInsetCorridorNetwork(insetPolygon) {
-        const outline = turf.polygonToLine(insetPolygon);
-        const lineFeatures =
-            outline.geometry.type === "LineString"
-                ? [outline]
-                : outline.geometry.coordinates.map((coords) => turf.lineString(coords));
+    function buildDirectCorridorNetwork(entrancePoint, destinationPoint) {
+        const from = entrancePoint.geometry.coordinates;
+        const to = destinationPoint.geometry.coordinates;
 
-        const corridorCoords = [];
-        lineFeatures.forEach((lineFeature) => {
-            const coords = lineFeature.geometry.coordinates;
-            for (let i = 0; i < coords.length - 1; i++) {
-                if (coordsEqual(coords[i], coords[i + 1])) continue;
-                corridorCoords.push([coords[i], coords[i + 1]]);
-            }
-        });
-
-        if (!corridorCoords.length) {
-            throw new Error("SyntheticIndoorCorridorService: brak segmentów inset polygon");
-        }
-
-        return turf.multiLineString(corridorCoords, {
-            source: "inset-polygon-outline",
-            segmentCount: corridorCoords.length,
+        return turf.multiLineString([[from, to]], {
+            source: "entrance-destination-direct",
+            segmentCount: 1,
         });
     }
 
@@ -342,12 +326,15 @@
     }
 
     function extractCorridorSegments(virtualCorridors) {
-        const lines =
-            virtualCorridors.type === "Feature"
-                ? virtualCorridors.geometry.type === "MultiLineString"
-                    ? virtualCorridors.geometry.coordinates.map((coords) => turf.lineString(coords))
-                    : [virtualCorridors]
-                : [];
+        const lines = [];
+
+        if (virtualCorridors.type === "Feature") {
+            if (virtualCorridors.geometry.type === "MultiLineString") {
+                virtualCorridors.geometry.coordinates.forEach((coords) => lines.push(turf.lineString(coords)));
+            } else if (virtualCorridors.geometry.type === "LineString") {
+                lines.push(virtualCorridors);
+            }
+        }
 
         const segments = [];
         lines.forEach((lineFeature, lineIndex) => {

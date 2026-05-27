@@ -1,10 +1,13 @@
 (function (global) {
     const OVERPASS_ENDPOINTS = [
-        "https://overpass-api.de/api/interpreter",
+        "https://overpass.openstreetmap.fr/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
     ];
     const OVERPASS_URL = OVERPASS_ENDPOINTS[0];
     const OVERPASS_MIN_GAP_MS = 1100;
+    const OVERPASS_FETCH_TIMEOUT_MS = 20000;
 
     let overpassQueue = Promise.resolve();
     let overpassLastDoneAt = 0;
@@ -584,26 +587,52 @@
         return 1500 * (attempt + 1);
     }
 
+    function isOverpassNetworkError(error) {
+        if (!error) return false;
+        if (error.networkError) return true;
+        if (error.name === "TypeError" || error.name === "AbortError") return true;
+        const message = String(error.message || error.cause?.message || "");
+        return /failed to fetch|networkerror|network error|connection|refused|abort|timed out|timeout/i.test(
+            message
+        );
+    }
+
     async function postOverpassOnce(url, query) {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-                Accept: "application/json",
-                "User-Agent": "TupTup/1.0 (delivery-map; contact@tuptup.github.io)",
-            },
-            body: `data=${encodeURIComponent(query)}`,
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OVERPASS_FETCH_TIMEOUT_MS);
+
+        let response;
+        try {
+            response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    Accept: "application/json",
+                    "User-Agent": "TupTup/1.0 (delivery-map; contact@tuptup.github.io)",
+                },
+                body: `data=${encodeURIComponent(query)}`,
+                signal: controller.signal,
+            });
+        } catch (error) {
+            const wrapped = new Error(`Overpass network error (${url}): ${error.message}`);
+            wrapped.networkError = true;
+            wrapped.cause = error;
+            throw wrapped;
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
         if (response.status === 429 || response.status === 503 || response.status === 504) {
-            const error = new Error(`Overpass HTTP ${response.status}`);
+            const error = new Error(`Overpass HTTP ${response.status} (${url})`);
             error.retryable = true;
             error.retryDelayMs = overpassRetryDelayMs(response, 0);
             throw error;
         }
 
         if (!response.ok) {
-            throw new Error(`Overpass HTTP ${response.status}`);
+            const error = new Error(`Overpass HTTP ${response.status} (${url})`);
+            error.retryable = response.status >= 500;
+            throw error;
         }
 
         return response.json();
@@ -625,10 +654,14 @@
                     return data;
                 } catch (error) {
                     lastError = error;
-                    if (!error.retryable || attempt >= 2) break;
-                    await new Promise((resolve) =>
-                        setTimeout(resolve, error.retryDelayMs || overpassRetryDelayMs(null, attempt))
-                    );
+                    if (isOverpassNetworkError(error)) break;
+                    if (error.retryable && attempt < 2) {
+                        await new Promise((resolve) =>
+                            setTimeout(resolve, error.retryDelayMs || overpassRetryDelayMs(null, attempt))
+                        );
+                        continue;
+                    }
+                    break;
                 }
             }
         }
