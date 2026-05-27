@@ -6,8 +6,20 @@
 
     const outlineApi = window.TupTupBuildingOutline;
     const outdoorRoutingApi = window.TupTupOutdoorRouting;
+    const footwayRoutingApi = window.TupTupOsmFootwayRouting;
+
+    let footwayGraph = null;
+    let footwayGraphLoading = false;
+    let footwayGraphCacheKey = null;
+
+    const footwayPlugin = footwayRoutingApi
+        ? footwayRoutingApi.createPlugin({ getGraph: () => footwayGraph })
+        : null;
+
     const outdoorRouting = outdoorRoutingApi
-        ? new outdoorRoutingApi.OutdoorRoutingService()
+        ? new outdoorRoutingApi.OutdoorRoutingService({
+              plugins: footwayPlugin ? [footwayPlugin] : [],
+          })
         : null;
     const MAP_FALLBACK_CENTER = [52.2297, 21.0122];
     const MAP_FALLBACK_ZOOM = 16;
@@ -295,6 +307,7 @@
                     parkingPoint: { lng: from.lng, lat: from.lat },
                     entrancePoint: { lng: to.lng, lat: to.lat },
                     buildingPolygon: buildingPolygonGeoJson(buildingOutline),
+                    footwayGraph,
                 });
                 return lineFeature.geometry;
             } catch (error) {
@@ -309,6 +322,36 @@
                 [to.lng, to.lat],
             ],
         };
+    }
+
+    function loadFootwayGraph() {
+        if (!footwayRoutingApi || !hasBuilding()) return;
+
+        const polygon = buildingPolygonGeoJson(buildingOutline);
+        const center = buildingBounds?.getCenter();
+        const cacheKey = center
+            ? `${center.lat.toFixed(5)},${center.lng.toFixed(5)}`
+            : "unknown";
+
+        if (footwayGraphCacheKey === cacheKey && footwayGraph) return;
+        if (footwayGraphLoading) return;
+
+        footwayGraphLoading = true;
+        footwayGraphCacheKey = cacheKey;
+
+        footwayRoutingApi
+            .loadNetwork(polygon)
+            .then((graph) => {
+                footwayGraph = graph;
+                updateRoutes();
+            })
+            .catch((error) => {
+                console.warn("[TupTup] Błąd pobierania chodników OSM:", error);
+                footwayGraph = null;
+            })
+            .finally(() => {
+                footwayGraphLoading = false;
+            });
     }
 
     function updateRoutesSource(visibleRouteIds = null) {
@@ -412,6 +455,7 @@
         }
         ensureWizardStarted();
         scheduleMapLayoutRetries();
+        loadFootwayGraph();
     }
 
     function scheduleMapLayoutRetries() {
@@ -1089,6 +1133,9 @@
         selectedOsmEntranceId = null;
         entranceSnapDetached = false;
         hideOsmEntrances();
+        footwayGraph = null;
+        footwayGraphCacheKey = null;
+        footwayRoutingApi?.clearCache?.();
         applyBuildingOutline(building.outline);
         loadOsmEntrances();
         document.dispatchEvent(new CustomEvent("tuptup:building", { detail: building }));
