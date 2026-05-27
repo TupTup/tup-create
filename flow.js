@@ -463,7 +463,7 @@
             buildingPlaceAddress.hidden = !hasAddress;
         }
         if (buildingPlace) {
-            buildingPlace.hidden = !hasName && !hasAddress;
+            buildingPlace.hidden = !hasName;
         }
     }
 

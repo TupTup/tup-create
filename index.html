@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>TupTup - lokalizacja dostawy</title>
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-    <link rel="stylesheet" href="styles.css?v=22">
+    <link rel="stylesheet" href="styles.css?v=29">
     <link rel="stylesheet" href="tup-stepper.css?v=3">
 </head>
 <body>
     <form id="recipient-form" class="app app--flow">
         <header class="topbar">
             <button type="button" class="icon-button icon-button--ghost no-print" id="back-button" aria-label="Wróć do poprzedniego kroku">‹</button>
+            <p class="building-place__address topbar__address" id="building-place-address" hidden></p>
         </header>
 
         <nav class="tup-stepper no-print" aria-label="Postęp kreatora">
@@ -46,7 +47,6 @@
         <section class="hero-copy no-print">
             <div class="building-place" id="building-place" hidden>
                 <p class="building-place__name" id="building-place-name"></p>
-                <p class="building-place__address" id="building-place-address"></p>
             </div>
             <h1 id="hero-title">Gdzie najlepiej zaparkować?</h1>
             <p id="hero-desc">Wskaż miejsce parkingowe, z którego najłatwiej dotrzeć do wejścia.</p>
@@ -155,6 +155,6 @@
     <script src="sheet.js" defer></script>
     <script src="note.js" defer></script>
     <script src="tup-stepper.js" defer></script>
-    <script src="flow.js?v=21" defer></script>
+    <script src="flow.js?v=22" defer></script>
 </body>
 </html>
