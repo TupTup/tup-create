@@ -267,6 +267,7 @@
             const isLast = stepIndex === STEPS.length - 1;
             stepAction.textContent = meta.nextLabel;
             stepAction.type = isLast ? "submit" : "button";
+            stepAction.classList.toggle("primary-button--destination", step === "destination");
         }
 
         updateNavState();

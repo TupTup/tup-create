@@ -745,6 +745,11 @@ body {
     flex-shrink: 0;
 }
 
+.app--flow .primary-button.primary-button--destination {
+    background: var(--destination);
+    box-shadow: 0 8px 22px rgba(16, 185, 129, 0.28);
+}
+
 @media (max-width: 767px) and (max-height: 640px) {
     .app--flow .sheet:not(.is-collapsed) {
         min-height: min(52dvh, 420px);
