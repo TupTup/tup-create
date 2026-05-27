@@ -122,6 +122,23 @@
     const routeLines = {};
     let wizardStep = "parking";
 
+    const STEP_COLORS = {
+        parking: "#2563eb",
+        entrance: "#10b981",
+        floor: "#f59e0b",
+        destination: "#10b981",
+    };
+    const ROUTE_DESTINATION_STEP = {
+        "parking-entrance": "entrance",
+        "entrance-floor": "floor",
+        "floor-delivery": "destination",
+    };
+
+    function routeLineColor(routeId) {
+        const step = ROUTE_DESTINATION_STEP[routeId];
+        return step ? STEP_COLORS[step] : "#111111";
+    }
+
     const wizardConfig = {
         parking: {
             markers: ["parking"],
@@ -137,19 +154,19 @@
         },
         floor: {
             markers: ["parking", "entrance", "floorIndicator"],
-            routes: ["parking-entrance"],
+            routes: ["parking-entrance", "entrance-floor"],
             draggable: ["floorIndicator"],
             active: "floorIndicator",
         },
         destination: {
             markers: ["parking", "entrance", "delivery", "floorIndicator"],
-            routes: ["parking-entrance", "entrance-delivery"],
+            routes: ["parking-entrance", "entrance-floor", "floor-delivery"],
             draggable: ["delivery"],
             active: "delivery",
         },
         print: {
             markers: ["parking", "entrance", "delivery", "floorIndicator"],
-            routes: ["parking-entrance", "entrance-delivery"],
+            routes: ["parking-entrance", "entrance-floor", "floor-delivery"],
             draggable: [],
             active: null,
         },
@@ -324,15 +341,7 @@
                     type: "line",
                     source: "routes",
                     paint: {
-                        "line-color": [
-                            "match",
-                            ["get", "id"],
-                            "parking-entrance",
-                            "#f59e0b",
-                            "entrance-delivery",
-                            "#10b981",
-                            "#111111",
-                        ],
+                        "line-color": ["coalesce", ["get", "color"], "#111111"],
                         "line-width": 3,
                         "line-dasharray": [2, 2],
                     },
@@ -439,7 +448,7 @@
         }
 
         if (
-            routeId === "entrance-delivery" &&
+            (routeId === "entrance-floor" || routeId === "floor-delivery") &&
             syntheticIndoorRouting &&
             hasBuilding()
         ) {
@@ -505,7 +514,7 @@
                 const to = getLatLng(route.tuptupTo);
                 return {
                     type: "Feature",
-                    properties: { id },
+                    properties: { id, color: routeLineColor(id) },
                     geometry: computeRouteGeometry(id, from, to),
                 };
             });
@@ -770,7 +779,8 @@
         const config = wizardConfig[wizardStep];
         updateRoutesSource(config?.routes || Object.keys(routeLines));
 
-        if (hasBuilding() && (config?.routes || []).includes("entrance-delivery")) {
+        const indoorRouteIds = ["entrance-floor", "floor-delivery"];
+        if (hasBuilding() && (config?.routes || []).some((id) => indoorRouteIds.includes(id))) {
             updateInsetPolygonSource(getLatLng("entrance"), getLatLng("delivery"));
         } else {
             updateInsetPolygonSource(null, null);
@@ -1344,7 +1354,8 @@
         addMarker("floorIndicator");
         if (markers.floorIndicator) markers.floorIndicator.remove();
         addRoute("parking-entrance", "parking", "entrance");
-        addRoute("entrance-delivery", "entrance", "delivery");
+        addRoute("entrance-floor", "entrance", "floorIndicator");
+        addRoute("floor-delivery", "floorIndicator", "delivery");
 
         Object.entries(markers).forEach(([key, marker]) => {
             marker.on("dragstart", () => {
