@@ -1,16 +1,15 @@
 /* Tup creation wizard — horizontal progress stepper */
 
 .tup-stepper {
-    --stepper-active: #2563eb;
-    --stepper-active-bg: #2563eb;
-    --stepper-inactive-bg: #f0f0f0;
-    --stepper-inactive-icon: #9ca3af;
-    --stepper-inactive-text: #6b7280;
-    --stepper-line: #e5e7eb;
+    --stepper-active: var(--strong, #000000);
+    --stepper-active-bg: var(--strong, #000000);
+    --stepper-inactive-bg: var(--surface-soft, #f1f1f1);
+    --stepper-inactive-icon: var(--muted, #666666);
+    --stepper-inactive-text: var(--muted, #666666);
+    --stepper-line: var(--line, #dddddd);
     --stepper-circle-size: 42px;
     --stepper-icon-size: 20px;
     --stepper-inline-padding: 20px;
-    --stepper-bar-offset: 0px;
 
     position: sticky;
     top: 0;
@@ -19,7 +18,6 @@
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border-bottom: 1px solid #f0f0f0;
 }
 
 .tup-stepper__list {
@@ -28,22 +26,9 @@
     justify-content: center;
     list-style: none;
     margin: 0;
-    padding: 14px var(--stepper-inline-padding) 10px;
+    padding: 14px var(--stepper-inline-padding) 16px;
     max-width: 420px;
     margin-inline: auto;
-    position: relative;
-}
-
-.tup-stepper__list::before {
-    content: "";
-    position: absolute;
-    left: var(--stepper-inline-padding);
-    right: var(--stepper-inline-padding);
-    bottom: var(--stepper-bar-offset);
-    height: 2px;
-    background: var(--stepper-line);
-    border-radius: 1px;
-    z-index: 0;
 }
 
 .tup-stepper__step {
@@ -52,25 +37,6 @@
     justify-content: center;
     position: relative;
     min-width: 0;
-}
-
-.tup-stepper__step::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: var(--stepper-bar-offset);
-    width: 100%;
-    height: 2px;
-    background: var(--stepper-active);
-    border-radius: 1px;
-    transform: scaleX(0);
-    transform-origin: left center;
-    transition: transform 0.2s ease;
-    z-index: 1;
-}
-
-.tup-stepper__step.is-segment-filled::after {
-    transform: scaleX(1);
 }
 
 .tup-stepper__step:not(:first-child)::before {
@@ -96,7 +62,7 @@
     align-items: center;
     gap: 6px;
     margin: 0;
-    padding: 0 4px 10px;
+    padding: 0 4px;
     border: 0;
     background: transparent;
     cursor: pointer;
@@ -146,7 +112,7 @@
     background: var(--stepper-active-bg);
     color: #ffffff;
     transform: scale(1.04);
-    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 
 .tup-stepper__item.is-complete .tup-stepper__circle {
@@ -160,7 +126,7 @@
 }
 
 .tup-stepper__item.is-complete .tup-stepper__label {
-    color: var(--stepper-active);
+    color: var(--text, #111111);
     font-weight: 600;
 }
 
@@ -177,7 +143,7 @@
 }
 
 .tup-stepper__item.active .tup-stepper__label {
-    color: var(--stepper-active);
+    color: var(--text, #111111);
     font-weight: 700;
 }
 

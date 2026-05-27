@@ -77,6 +77,7 @@
             <input type="hidden" name="entrance_lng" value="">
             <input type="hidden" name="delivery_lat" value="">
             <input type="hidden" name="delivery_lng" value="">
+            <span id="delivery-floor-label" hidden>Miejsce dostawy</span>
         </div>
 
         <section class="sheet is-collapsed print-sections" data-default-collapsed data-expand-on-drop>
@@ -85,13 +86,6 @@
             </button>
             <div class="sheet-body" id="sheet-panel">
                 <section class="sheet-step" data-step="parking">
-                    <div class="sheet-head">
-                        <div class="sheet-icon">P</div>
-                        <div>
-                            <h2>Wybrane miejsce</h2>
-                            <p>Wybrane miejsce parkingowe</p>
-                        </div>
-                    </div>
                     <div class="form-row">
                         <div class="photo-card add street" role="button" tabindex="0" aria-label="Dodaj zdjęcie parkingu">
                             <input type="file" class="photo-input" name="parking_photo" accept="image/*" capture="environment" hidden>
@@ -105,13 +99,6 @@
                 </section>
 
                 <section class="sheet-step" data-step="entrance" hidden>
-                    <div class="sheet-head">
-                        <div class="sheet-icon"><span class="icon-entrance" aria-hidden="true"></span></div>
-                        <div>
-                            <h2>Wybrane wejście</h2>
-                            <p>Wybrane wejście</p>
-                        </div>
-                    </div>
                     <div class="form-row">
                         <div class="photo-card add entrance" role="button" tabindex="0" aria-label="Dodaj zdjęcie wejścia">
                             <input type="file" class="photo-input" name="entrance_photo" accept="image/*" capture="environment" hidden>
@@ -125,13 +112,6 @@
                 </section>
 
                 <section class="sheet-step" data-step="destination" hidden>
-                    <div class="sheet-head">
-                        <div class="sheet-icon">◎</div>
-                        <div>
-                            <h2>Miejsce dostawy</h2>
-                            <p id="delivery-floor-label">Piętro dostawy</p>
-                        </div>
-                    </div>
                     <div class="form-row">
                         <div class="photo-card add door" role="button" tabindex="0" aria-label="Dodaj zdjęcie celu dostawy">
                             <input type="file" class="photo-input" name="delivery_photo" accept="image/*" capture="environment" hidden>

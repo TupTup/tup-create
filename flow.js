@@ -149,10 +149,7 @@
             );
 
             const stepItem = stepItems[index];
-            if (stepItem) {
-                stepItem.classList.toggle("is-reached", unlocked && index > 0);
-                stepItem.classList.toggle("is-segment-filled", index <= stepIndex);
-            }
+            if (stepItem) stepItem.classList.toggle("is-reached", unlocked && index > 0);
         });
 
         window.TupTupStepper?.refreshIcons();
