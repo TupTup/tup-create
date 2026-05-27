@@ -6,6 +6,7 @@
 
     const outlineApi = window.TupTupBuildingOutline;
     const outdoorRoutingApi = window.TupTupOutdoorRouting;
+    const syntheticIndoorApi = window.TupTupSyntheticIndoorCorridor;
     const footwayRoutingApi = window.TupTupOsmFootwayRouting;
 
     let footwayGraph = null;
@@ -21,6 +22,66 @@
               plugins: footwayPlugin ? [footwayPlugin] : [],
           })
         : null;
+    const syntheticIndoorRouting = syntheticIndoorApi
+        ? new syntheticIndoorApi.SyntheticIndoorCorridorService()
+        : null;
+    let syntheticCorridorsCache = null;
+    let syntheticCorridorsCacheKey = null;
+
+    function getSyntheticCorridors(from, to) {
+        if (!syntheticIndoorRouting || !hasBuilding() || !from || !to) return null;
+
+        const cacheKey = [
+            buildingOutline
+                .map((coord) => `${coord[0].toFixed(5)},${coord[1].toFixed(5)}`)
+                .join("|"),
+            `${from.lng.toFixed(5)},${from.lat.toFixed(5)}`,
+            `${to.lng.toFixed(5)},${to.lat.toFixed(5)}`,
+        ].join("::");
+
+        if (syntheticCorridorsCacheKey === cacheKey && syntheticCorridorsCache) {
+            return syntheticCorridorsCache;
+        }
+
+        try {
+            syntheticCorridorsCache = syntheticIndoorRouting.generateCorridors({
+                buildingPolygon: buildingPolygonGeoJson(buildingOutline),
+                entrancePoint: { lng: from.lng, lat: from.lat },
+                destinationPoint: { lng: to.lng, lat: to.lat },
+            });
+            syntheticCorridorsCacheKey = cacheKey;
+            return syntheticCorridorsCache;
+        } catch (error) {
+            console.warn("[TupTup] Nie udało się wygenerować synthetic corridors:", error);
+            syntheticCorridorsCache = null;
+            syntheticCorridorsCacheKey = cacheKey;
+            return null;
+        }
+    }
+
+    function updateVirtualCorridorsSource(from, to) {
+        const source = map.getSource("virtual-corridors");
+        if (!source) return;
+
+        const corridors = getSyntheticCorridors(from, to);
+        if (!corridors) {
+            source.setData(emptyFeatureCollection());
+            return;
+        }
+
+        source.setData({
+            type: "FeatureCollection",
+            features: [
+                corridors.type === "Feature"
+                    ? corridors
+                    : {
+                          type: "Feature",
+                          properties: { ...(corridors.properties || {}) },
+                          geometry: corridors.geometry,
+                      },
+            ],
+        });
+    }
     const MAP_FALLBACK_CENTER = [52.2297, 21.0122];
     const MAP_FALLBACK_ZOOM = 16;
 
@@ -186,6 +247,10 @@
                     type: "geojson",
                     data: emptyFeatureCollection(),
                 },
+                "virtual-corridors": {
+                    type: "geojson",
+                    data: emptyFeatureCollection(),
+                },
                 "osm-entrances": {
                     type: "geojson",
                     data: emptyFeatureCollection(),
@@ -218,6 +283,20 @@
                     paint: {
                         "line-color": "#111111",
                         "line-width": 3,
+                    },
+                },
+                {
+                    id: "virtual-corridors",
+                    type: "line",
+                    source: "virtual-corridors",
+                    paint: {
+                        "line-color": "#6b7280",
+                        "line-width": 2,
+                        "line-opacity": 0.55,
+                        "line-dasharray": [1, 2],
+                    },
+                    layout: {
+                        "line-cap": "round",
                     },
                 },
                 {
@@ -312,6 +391,23 @@
                 return lineFeature.geometry;
             } catch (error) {
                 console.warn("[TupTup] Błąd routingu outdoor:", error);
+            }
+        }
+
+        if (
+            routeId === "entrance-delivery" &&
+            syntheticIndoorRouting &&
+            hasBuilding()
+        ) {
+            try {
+                const lineFeature = syntheticIndoorRouting.route({
+                    entrancePoint: { lng: from.lng, lat: from.lat },
+                    destinationPoint: { lng: to.lng, lat: to.lat },
+                    buildingPolygon: buildingPolygonGeoJson(buildingOutline),
+                });
+                return lineFeature.geometry;
+            } catch (error) {
+                console.warn("[TupTup] Błąd synthetic indoor routing (fallback: linia prosta):", error);
             }
         }
 
@@ -439,6 +535,8 @@
     function applyBuildingOutline(outline) {
         if (!outline?.length) return;
         buildingOutline = outline;
+        syntheticCorridorsCache = null;
+        syntheticCorridorsCacheKey = null;
         buildingBounds = latLngBoundsFromCoords(buildingOutline);
         updateBuildingSource();
         if (buildingBounds?.isValid()) {
@@ -513,6 +611,13 @@
     function updateRoutes() {
         const config = wizardConfig[wizardStep];
         updateRoutesSource(config?.routes || Object.keys(routeLines));
+
+        if (hasBuilding() && (config?.routes || []).includes("entrance-delivery")) {
+            updateVirtualCorridorsSource(getLatLng("entrance"), getLatLng("delivery"));
+        } else {
+            updateVirtualCorridorsSource(null, null);
+        }
+
         syncCoords();
     }
 
