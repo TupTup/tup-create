@@ -3,7 +3,11 @@
     if (!form) return;
 
     const STEPS = ["parking", "entrance", "destination"];
-    const stepBadge = document.getElementById("step-badge");
+    const STEP_ICONS = {
+        parking: "circle-parking",
+        entrance: "door-closed",
+        destination: "map-pin",
+    };
     const heroTitle = document.getElementById("hero-title");
     const heroDesc = document.getElementById("hero-desc");
     const floorPicker = document.getElementById("floor-picker");
@@ -31,19 +35,16 @@
         parking: {
             title: "Gdzie najlepiej zaparkować?",
             desc: "Wskaż miejsce parkingowe, z którego najłatwiej dotrzeć do wejścia.",
-            index: 1,
             nextLabel: "Dalej →",
         },
         entrance: {
             title: "Którym wejściem wejść?",
             desc: "Wskaż właściwe wejście do budynku. Dodaj zdjęcie, aby ułatwić kurierowi.",
-            index: 2,
             nextLabel: "Dalej →",
         },
         destination: {
             title: "Gdzie dostarczyć przesyłkę?",
             desc: "Wskaż dokładne miejsce dostawy w budynku.",
-            index: 3,
             nextLabel: "Zapisz lokalizację ✓",
         },
     };
@@ -115,16 +116,46 @@
         }
     }
 
+    function updateStepIcon(button, iconName) {
+        const circle = button.querySelector(".tup-stepper__circle");
+        if (!circle) return;
+        circle.innerHTML = `<i data-lucide="${iconName}"></i>`;
+    }
+
     function updateNavState() {
+        const stepItems = [...form.querySelectorAll(".tup-stepper__step")];
+
         tabButtons.forEach((button, index) => {
             const unlocked = index <= maxStepIndex;
-            button.classList.toggle("active", index === stepIndex);
-            button.classList.toggle("nav-tab--locked", !unlocked);
+            const isComplete = unlocked && index < stepIndex;
+            const isActive = index === stepIndex;
+
+            button.classList.toggle("active", isActive);
+            button.classList.toggle("is-complete", isComplete);
+            button.classList.toggle("tup-stepper__item--locked", !unlocked);
             button.disabled = !unlocked;
             button.setAttribute("aria-disabled", String(!unlocked));
-            if (index === stepIndex) button.setAttribute("aria-current", "step");
+            if (isActive) button.setAttribute("aria-current", "step");
             else button.removeAttribute("aria-current");
+
+            const label = button.querySelector(".tup-stepper__label")?.textContent?.trim() || "";
+            if (isComplete) button.setAttribute("aria-label", `${label} — ukończono`);
+            else if (isActive) button.setAttribute("aria-label", `${label} — bieżący krok`);
+            else button.removeAttribute("aria-label");
+
+            updateStepIcon(
+                button,
+                isComplete ? "check" : STEP_ICONS[STEPS[index]]
+            );
+
+            const stepItem = stepItems[index];
+            if (stepItem) {
+                stepItem.classList.toggle("is-reached", unlocked && index > 0);
+                stepItem.classList.toggle("is-segment-filled", index <= stepIndex);
+            }
         });
+
+        window.TupTupStepper?.refreshIcons();
     }
 
     function goToStep(index, { fromNav = false } = {}) {
@@ -139,7 +170,6 @@
             panel.hidden = panel.dataset.step !== step;
         });
 
-        if (stepBadge) stepBadge.textContent = `${meta.index} z 3`;
         if (heroTitle) heroTitle.textContent = meta.title;
         if (heroDesc) heroDesc.textContent = meta.desc;
 

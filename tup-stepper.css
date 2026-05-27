@@ -1,0 +1,203 @@
+/* Tup creation wizard — horizontal progress stepper */
+
+.tup-stepper {
+    --stepper-active: #2563eb;
+    --stepper-active-bg: #2563eb;
+    --stepper-inactive-bg: #f0f0f0;
+    --stepper-inactive-icon: #9ca3af;
+    --stepper-inactive-text: #6b7280;
+    --stepper-line: #e5e7eb;
+    --stepper-circle-size: 42px;
+    --stepper-icon-size: 20px;
+    --stepper-inline-padding: 20px;
+    --stepper-bar-offset: 0px;
+
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.tup-stepper__list {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    list-style: none;
+    margin: 0;
+    padding: 14px var(--stepper-inline-padding) 10px;
+    max-width: 420px;
+    margin-inline: auto;
+    position: relative;
+}
+
+.tup-stepper__list::before {
+    content: "";
+    position: absolute;
+    left: var(--stepper-inline-padding);
+    right: var(--stepper-inline-padding);
+    bottom: var(--stepper-bar-offset);
+    height: 2px;
+    background: var(--stepper-line);
+    border-radius: 1px;
+    z-index: 0;
+}
+
+.tup-stepper__step {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    position: relative;
+    min-width: 0;
+}
+
+.tup-stepper__step::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: var(--stepper-bar-offset);
+    width: 100%;
+    height: 2px;
+    background: var(--stepper-active);
+    border-radius: 1px;
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.2s ease;
+    z-index: 1;
+}
+
+.tup-stepper__step.is-segment-filled::after {
+    transform: scaleX(1);
+}
+
+.tup-stepper__step:not(:first-child)::before {
+    content: "";
+    position: absolute;
+    top: calc(var(--stepper-circle-size) / 2);
+    right: 50%;
+    left: -50%;
+    height: 2px;
+    background: var(--stepper-line);
+    transform: translateY(-50%);
+    z-index: 0;
+    transition: background 0.2s ease;
+}
+
+.tup-stepper__step.is-reached:not(:first-child)::before {
+    background: var(--stepper-active);
+}
+
+.tup-stepper__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0 4px 10px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    text-decoration: none;
+    position: relative;
+    z-index: 1;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 0.2s ease;
+}
+
+.tup-stepper__item:focus-visible {
+    outline: 2px solid var(--stepper-active);
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+.tup-stepper__item--locked {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.tup-stepper__circle {
+    width: var(--stepper-circle-size);
+    height: var(--stepper-circle-size);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--stepper-inactive-bg);
+    color: var(--stepper-inactive-icon);
+    transition:
+        background 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.tup-stepper__circle svg {
+    width: var(--stepper-icon-size);
+    height: var(--stepper-icon-size);
+    stroke-width: 2;
+}
+
+.tup-stepper__item.active .tup-stepper__circle {
+    background: var(--stepper-active-bg);
+    color: #ffffff;
+    transform: scale(1.04);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.tup-stepper__item.is-complete .tup-stepper__circle {
+    background: var(--stepper-active-bg);
+    color: #ffffff;
+}
+
+.tup-stepper__item.is-complete:not(.active) .tup-stepper__circle {
+    transform: none;
+    box-shadow: none;
+}
+
+.tup-stepper__item.is-complete .tup-stepper__label {
+    color: var(--stepper-active);
+    font-weight: 600;
+}
+
+.tup-stepper__label {
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 500;
+    color: var(--stepper-inactive-text);
+    text-align: center;
+    white-space: nowrap;
+    transition:
+        color 0.2s ease,
+        font-weight 0.2s ease;
+}
+
+.tup-stepper__item.active .tup-stepper__label {
+    color: var(--stepper-active);
+    font-weight: 700;
+}
+
+@media (min-width: 768px) {
+    .tup-stepper {
+        --stepper-inline-padding: 24px;
+    }
+
+    .tup-stepper__list {
+        padding-top: 12px;
+    }
+
+    .tup-stepper__label {
+        font-size: 12px;
+    }
+}
+
+@media (min-width: 980px) {
+    .app--flow .tup-stepper {
+        grid-column: 2;
+        grid-row: 2;
+    }
+}

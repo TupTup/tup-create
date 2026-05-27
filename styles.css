@@ -34,28 +34,6 @@
     height: 24px;
 }
 
-.nav-item .icon-entrance {
-    width: 24px;
-    height: 24px;
-}
-
-.nav-item .icon-parking {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    background: #333;
-    color: #fff;
-    font-weight: 900;
-    font-size: 15px;
-    line-height: 1;
-}
-
-.nav-item.active .icon-parking {
-    background: var(--strong);
-}
-
 * {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
@@ -89,9 +67,9 @@ body {
 }
 
 .topbar {
-    display: grid;
-    grid-template-columns: 44px 1fr auto;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: calc(8px + env(safe-area-inset-top, 0px)) 20px 14px;
     flex-shrink: 0;
 }
@@ -107,17 +85,7 @@ body {
     color: var(--text);
 }
 
-.step-badge {
-    justify-self: center;
-    padding: 7px 14px;
-    border-radius: 999px;
-    background: var(--surface-soft);
-    font-weight: 700;
-    font-size: 14px;
-}
-
 .topbar-actions {
-    justify-self: end;
     display: flex;
     align-items: center;
     gap: 14px;
@@ -312,7 +280,7 @@ body {
     position: absolute;
     left: 12px;
     right: 12px;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     background: var(--surface);
     border: 1px solid #eeeeee;
     border-radius: var(--radius-xl);
@@ -567,43 +535,6 @@ body {
     font-weight: 800;
 }
 
-.bottom-nav {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    min-height: 72px;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    align-items: center;
-    background: rgba(255,255,255,.96);
-    border-top: 1px solid #ececec;
-    z-index: 20;
-}
-
-.nav-item {
-    display: grid;
-    place-items: center;
-    gap: 2px;
-    color: #333;
-    font-size: 12px;
-    text-decoration: none;
-}
-
-.nav-item strong {
-    display: grid;
-    place-items: center;
-    font-size: 24px;
-    line-height: 1;
-    min-height: 24px;
-}
-
-.nav-item.active {
-    color: var(--strong);
-    font-weight: 800;
-}
-
 .floor-picker {
     position: absolute;
     right: 16px;
@@ -691,20 +622,6 @@ body {
     display: none;
 }
 
-.nav-tab {
-    border: 0;
-    background: transparent;
-    cursor: pointer;
-    font: inherit;
-    color: inherit;
-    text-decoration: none;
-}
-
-.nav-tab--locked {
-    opacity: 0.38;
-    cursor: default;
-}
-
 .map-marker--parking:not(.map-marker--active) {
     background: var(--surface);
     color: var(--strong);
@@ -729,18 +646,6 @@ body {
 
 .form-meta {
     display: none;
-}
-
-.app--flow .topbar .icon-button {
-    grid-column: 1;
-}
-
-.app--flow .topbar .step-badge {
-    grid-column: 2;
-}
-
-.app--flow .topbar .topbar-actions {
-    grid-column: 3;
 }
 
 .app--flow .icon-button--ghost {
@@ -850,7 +755,7 @@ body {
     .app {
         display: grid;
         grid-template-columns: 1fr min(420px, 38vw);
-        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        grid-template-rows: auto auto auto minmax(0, 1fr);
         width: 100%;
         max-width: none;
         height: 100dvh;
@@ -870,7 +775,7 @@ body {
 
     .hero-copy {
         grid-column: 2;
-        grid-row: 2;
+        grid-row: 3;
         padding-bottom: 12px;
     }
 
@@ -897,7 +802,7 @@ body {
         right: auto;
         bottom: auto;
         grid-column: 2;
-        grid-row: 3;
+        grid-row: 4;
         align-self: stretch;
         min-height: 0;
         margin: 0 12px;
@@ -937,15 +842,6 @@ body {
 
     .app--flow .form-row {
         min-height: clamp(220px, 42dvh, 360px);
-    }
-
-    .bottom-nav {
-        position: static;
-        grid-column: 2;
-        grid-row: 4;
-        left: auto;
-        right: auto;
-        bottom: auto;
     }
 
     .app--flow .map-area {

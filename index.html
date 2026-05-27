@@ -6,17 +6,40 @@
     <title>TupTup - lokalizacja dostawy</title>
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="tup-stepper.css">
 </head>
 <body>
     <form id="recipient-form" class="app app--flow">
         <header class="topbar">
             <button type="button" class="icon-button icon-button--ghost no-print" id="back-button" aria-label="Wróć do poprzedniego kroku">‹</button>
-            <div class="step-badge no-print" id="step-badge">1 z 3</div>
             <div class="topbar-actions no-print">
                 <button type="button" class="print-link" id="print-button">Drukuj</button>
                 <a class="cancel no-print" href="#">Anuluj</a>
             </div>
         </header>
+
+        <nav class="tup-stepper no-print" aria-label="Postęp kreatora">
+            <ol class="tup-stepper__list">
+                <li class="tup-stepper__step">
+                    <button type="button" class="tup-stepper__item active" data-step-tab="parking" aria-current="step">
+                        <span class="tup-stepper__circle"><i data-lucide="circle-parking"></i></span>
+                        <span class="tup-stepper__label">Parking</span>
+                    </button>
+                </li>
+                <li class="tup-stepper__step">
+                    <button type="button" class="tup-stepper__item tup-stepper__item--locked" data-step-tab="entrance" disabled aria-disabled="true">
+                        <span class="tup-stepper__circle"><i data-lucide="door-closed"></i></span>
+                        <span class="tup-stepper__label">Wejście</span>
+                    </button>
+                </li>
+                <li class="tup-stepper__step">
+                    <button type="button" class="tup-stepper__item tup-stepper__item--locked" data-step-tab="destination" disabled aria-disabled="true">
+                        <span class="tup-stepper__circle"><i data-lucide="map-pin"></i></span>
+                        <span class="tup-stepper__label">Miejsce</span>
+                    </button>
+                </li>
+            </ol>
+        </nav>
 
         <section class="hero-copy no-print">
             <div class="building-place" id="building-place" hidden>
@@ -125,13 +148,9 @@
             </div>
         </section>
 
-        <nav class="bottom-nav no-print" aria-label="Postęp kreatora">
-            <button type="button" class="nav-item nav-tab active" data-step-tab="parking" aria-current="step"><strong><span class="icon-parking" aria-hidden="true">P</span></strong><span>Parking</span></button>
-            <button type="button" class="nav-item nav-tab nav-tab--locked" data-step-tab="entrance" disabled aria-disabled="true"><strong><span class="icon-entrance" aria-hidden="true"></span></strong><span>Wejście</span></button>
-            <button type="button" class="nav-item nav-tab nav-tab--locked" data-step-tab="destination" disabled aria-disabled="true"><strong>◎</strong><span>Cel</span></button>
-        </nav>
     </form>
 
+    <script src="https://unpkg.com/lucide@0.511.0/dist/umd/lucide.min.js"></script>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js"></script>
     <script src="building-outline.js?v=3"></script>
@@ -143,7 +162,8 @@
     <script src="map-index.js?v=29"></script>
     <script src="sheet.js" defer></script>
     <script src="note.js" defer></script>
-    <script src="flow.js?v=7" defer></script>
+    <script src="tup-stepper.js" defer></script>
+    <script src="flow.js?v=13" defer></script>
     <script src="print.js" defer></script>
 </body>
 </html>
