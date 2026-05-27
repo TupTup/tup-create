@@ -68,6 +68,8 @@
     let osmFloorRange = null;
 
     const DEFAULT_FLOOR = "2";
+    /** Garaż pod parterem — zawsze w panelu, także gdy OSM nie ma building:min_level < 0 */
+    const GARAGE_LEVEL = -1;
 
     function applyOsmFloorRange({ minLevel, maxLevel, levels } = {}) {
         const min = Number(minLevel);
@@ -98,11 +100,12 @@
 
     function floorLabel(value) {
         if (value === "0") return "parter";
-        if (value === "-1") return "parking";
+        if (value === String(GARAGE_LEVEL)) return "garaż";
         return `${value} piętro`;
     }
 
     function floorCaption(level) {
+        if (level === GARAGE_LEVEL) return "Garaż";
         if (level === 0) return "Parter";
         return "Piętro";
     }
@@ -146,10 +149,11 @@
         const max = Number(maxLevel);
         if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return;
 
-        wizardState.floorRange = { min, max };
+        const effectiveMin = Math.min(min, GARAGE_LEVEL);
+        wizardState.floorRange = { min: effectiveMin, max };
 
         const levels = [];
-        for (let level = max; level >= min; level -= 1) {
+        for (let level = max; level >= effectiveMin; level -= 1) {
             levels.push(level);
         }
 

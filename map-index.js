@@ -661,7 +661,7 @@
 
     function floorMapLabel(value) {
         if (value === "0") return "parter";
-        if (value === "-1") return "parking";
+        if (value === "-1") return "garaż";
         return `${value} piętro`;
     }
 
