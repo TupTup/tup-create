@@ -107,6 +107,161 @@
         return `[out:json][timeout:25];${osmType}(${id});node["entrance"](around:10);out geom;`;
     }
 
+    function buildFloorAccessPointSetQuery(osmType, osmId) {
+        if (osmType === "node") {
+            return `node(${osmId})->.p;`;
+        }
+        if (osmType === "relation") {
+            return `relation(${osmId})->.building;
+way.building(r)->.building_ways;
+node.building_ways(w)->.p;`;
+        }
+        return `way(${osmId})->.building;
+node.building(w)->.p;`;
+    }
+
+    function buildFloorAccessFilters(radiusMeters, aroundClause) {
+        const radius = Math.round(Math.max(radiusMeters, 15));
+        const around = aroundClause.includes("around")
+            ? aroundClause
+            : `${aroundClause}:${radius}`;
+        return `(
+  way(${around})["level"]["highway"="elevator"];
+  way(${around})["level"]["stairs"="yes"];
+  way(${around})["level"]["highway"="steps"];
+  node(${around})["level"]["highway"="elevator"];
+  node(${around})["level"]["elevator"];
+  relation(${around})["level"]["highway"="elevator"];
+  relation(${around})["level"]["stairs"="yes"];
+);`;
+    }
+
+    function buildFloorAccessOverpassQuery(osmType, osmId, radiusMeters = 60) {
+        const anchor = buildFloorAccessPointSetQuery(osmType, osmId);
+        const radius = Math.round(Math.max(radiusMeters, 15));
+        const filters = buildFloorAccessFilters(radiusMeters, `around.p:${radius}`);
+        return `[out:json][timeout:25];
+${anchor}
+${filters}
+out tags geom qt;`;
+    }
+
+    function buildFloorAccessCenterOverpassQuery(lat, lng, radiusMeters = 60) {
+        const radius = Math.round(Math.max(radiusMeters, 15));
+        const filters = buildFloorAccessFilters(radiusMeters, `around:${radius},${lat},${lng}`);
+        return `[out:json][timeout:25];
+${filters}
+out tags geom qt;`;
+    }
+
+    function floorAccessKindFromTags(tags) {
+        if (!tags?.level) return null;
+        if (tags.highway === "elevator" || tags.elevator) return "elevator";
+        if (tags.stairs === "yes" || tags.highway === "steps") return "stairs";
+        return null;
+    }
+
+    function centroidFromCoords(coords) {
+        if (!coords.length) return null;
+        let latSum = 0;
+        let lngSum = 0;
+        coords.forEach(({ lat, lng }) => {
+            latSum += lat;
+            lngSum += lng;
+        });
+        return { lat: latSum / coords.length, lng: lngSum / coords.length };
+    }
+
+    function coordsFromWayNodes(way, nodeById) {
+        if (!Array.isArray(way?.nodes) || !way.nodes.length) return [];
+
+        const coords = [];
+        way.nodes.forEach((nodeId) => {
+            const node = nodeById.get(nodeId);
+            if (node?.lat != null && node?.lon != null) {
+                coords.push({ lat: node.lat, lng: node.lon });
+            }
+        });
+        return coords;
+    }
+
+    function coordsFromRelationMembers(relation, nodeById, wayById) {
+        if (!Array.isArray(relation?.members)) return [];
+
+        const coords = [];
+        relation.members.forEach((member) => {
+            if (member.type === "node") {
+                const node = nodeById.get(member.ref);
+                if (node?.lat != null && node?.lon != null) {
+                    coords.push({ lat: node.lat, lng: node.lon });
+                }
+                return;
+            }
+            if (member.type === "way") {
+                coordsFromWayNodes(wayById.get(member.ref), nodeById).forEach((coord) => {
+                    coords.push(coord);
+                });
+            }
+        });
+        return coords;
+    }
+
+    function pointFromOverpassElement(element, nodeById, wayById) {
+        if (element.type === "node" && element.lat != null && element.lon != null) {
+            return { lat: element.lat, lng: element.lon };
+        }
+        if (Array.isArray(element.geometry) && element.geometry.length) {
+            const coords = element.geometry.map(({ lat, lon }) => ({ lat, lng: lon }));
+            return centroidFromCoords(coords);
+        }
+        if (element.type === "way") {
+            return centroidFromCoords(coordsFromWayNodes(element, nodeById));
+        }
+        if (element.type === "relation") {
+            return centroidFromCoords(coordsFromRelationMembers(element, nodeById, wayById));
+        }
+        if (element.center?.lat != null && element.center?.lon != null) {
+            return { lat: element.center.lat, lng: element.center.lon };
+        }
+        return null;
+    }
+
+    function floorAccessFromResponse(data) {
+        const elements = data?.elements;
+        if (!Array.isArray(elements)) return [];
+
+        const nodeById = new Map();
+        const wayById = new Map();
+        elements.forEach((el) => {
+            if (el.type === "node" && el.id != null) nodeById.set(el.id, el);
+            if (el.type === "way" && el.id != null) wayById.set(el.id, el);
+        });
+
+        const seen = new Set();
+        const points = [];
+        for (const el of elements) {
+            const kind = floorAccessKindFromTags(el.tags);
+            if (!kind) continue;
+
+            const coords = pointFromOverpassElement(el, nodeById, wayById);
+            if (!coords) continue;
+
+            const key = `${el.type}:${el.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            points.push({
+                id: el.id,
+                osmType: el.type,
+                lat: coords.lat,
+                lng: coords.lng,
+                kind,
+                level: el.tags.level,
+            });
+        }
+        return points;
+    }
+
     function entrancesFromResponse(data) {
         const elements = data?.elements;
         if (!Array.isArray(elements)) return [];
@@ -721,6 +876,32 @@
         return entrancesFromResponse(data);
     }
 
+    async function fetchFloorAccessPoints(osmType, osmId, radiusMeters = 60, center = null) {
+        const radius = Math.round(Math.max(radiusMeters, 15));
+        const hasCenter =
+            center &&
+            Number.isFinite(center.lat) &&
+            Number.isFinite(center.lng);
+
+        if (osmId && osmType && (osmType === "way" || osmType === "relation" || osmType === "node")) {
+            try {
+                const query = buildFloorAccessOverpassQuery(osmType, osmId, radius);
+                const data = await postOverpass(query);
+                const points = floorAccessFromResponse(data);
+                if (points.length || !hasCenter) return points;
+            } catch (error) {
+                console.warn("[TupTup] Błąd zapytania wind/schodów wokół budynku OSM:", error);
+                if (!hasCenter) throw error;
+            }
+        }
+
+        if (!hasCenter) return [];
+
+        const fallbackQuery = buildFloorAccessCenterOverpassQuery(center.lat, center.lng, radius);
+        const fallbackData = await postOverpass(fallbackQuery);
+        return floorAccessFromResponse(fallbackData);
+    }
+
     global.TupTupBuildingOutline = {
         FALLBACK_LEVELS: FALLBACK_BUILDING_LEVELS,
         OVERPASS_URL,
@@ -737,9 +918,15 @@
         pickBuildingElement,
         selectionMetaForElement,
         buildEntrancesOverpassQuery,
+        buildFloorAccessPointSetQuery,
+        buildFloorAccessFilters,
+        buildFloorAccessOverpassQuery,
+        buildFloorAccessCenterOverpassQuery,
         entrancesFromResponse,
+        floorAccessFromResponse,
         fetchOutline,
         fetchEntrances,
+        fetchFloorAccessPoints,
         resolve,
     };
 })(window);

@@ -101,8 +101,18 @@
     let selectedOsmEntranceId = null;
     let entranceSnapDetached = false;
 
+    let osmFloorAccessCache = null;
+    let osmFloorAccessCacheKey = null;
+    let osmFloorAccessLoading = false;
+    let selectedOsmFloorAccessId = null;
+    let floorAccessSnapDetached = false;
+
     const ENTRANCE_SNAP_METERS = 12;
     const ENTRANCE_DETACH_METERS = 26;
+    const FLOOR_ACCESS_SNAP_METERS = 12;
+    const FLOOR_ACCESS_DETACH_METERS = 26;
+    const FLOOR_ACCESS_QUERY_RADIUS_METERS = 60;
+    const FLOOR_ACCESS_BUILDING_TOLERANCE_METERS = 25;
     const entranceSnap = window.TupTupEntranceSnap?.create({
         snapMeters: ENTRANCE_SNAP_METERS,
         detachMeters: ENTRANCE_DETACH_METERS,
@@ -261,6 +271,10 @@
                     type: "geojson",
                     data: emptyFeatureCollection(),
                 },
+                "osm-floor-access": {
+                    type: "geojson",
+                    data: emptyFeatureCollection(),
+                },
                 "user-location": {
                     type: "geojson",
                     data: emptyFeatureCollection(),
@@ -330,6 +344,22 @@
                     id: "osm-entrances",
                     type: "circle",
                     source: "osm-entrances",
+                    paint: {
+                        "circle-radius": ["case", ["get", "selected"], 10, 8],
+                        "circle-color": [
+                            "case",
+                            ["get", "selected"],
+                            "#f59e0b",
+                            "#ffffff",
+                        ],
+                        "circle-stroke-color": "#f59e0b",
+                        "circle-stroke-width": ["case", ["get", "selected"], 3, 2],
+                    },
+                },
+                {
+                    id: "osm-floor-access",
+                    type: "circle",
+                    source: "osm-floor-access",
                     paint: {
                         "circle-radius": ["case", ["get", "selected"], 10, 8],
                         "circle-color": [
@@ -1004,6 +1034,213 @@
         map.setLayoutProperty("osm-entrances", "visibility", "none");
     }
 
+    function isFloorAccessNearBuilding(point) {
+        if (!hasBuilding()) return true;
+        const latlng = latLng(point.lat, point.lng);
+        if (pointInBuilding(latlng)) return true;
+        const onOutline = closestPointOnBuildingOutline(latlng);
+        return distanceMeters(latlng, onOutline) <= FLOOR_ACCESS_BUILDING_TOLERANCE_METERS;
+    }
+
+    function filterFloorAccessForBuilding(points) {
+        if (!points?.length) return [];
+        return points.filter(isFloorAccessNearBuilding);
+    }
+
+    function osmLevelMatchesSelectedFloor(levelTag, selectedFloor) {
+        if (selectedFloor == null || selectedFloor === "" || !levelTag) return true;
+        const selected = String(selectedFloor);
+        return String(levelTag)
+            .split(";")
+            .map((part) => part.trim())
+            .some((part) => part === selected);
+    }
+
+    function activeFloorAccessPoints(points = osmFloorAccessCache) {
+        if (!points?.length) return [];
+        const selected = getDeliveryFloorValue();
+        const matching = points.filter((point) =>
+            osmLevelMatchesSelectedFloor(point.level, selected)
+        );
+        return matching.length ? matching : points;
+    }
+
+    function findNearestFloorAccess(latlng, points = activeFloorAccessPoints()) {
+        if (!points?.length) return null;
+
+        let best = null;
+        let bestDist = Infinity;
+        points.forEach((point) => {
+            const dist = distanceMeters(latlng, latLng(point.lat, point.lng));
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = { point, distance: dist };
+            }
+        });
+        return best;
+    }
+
+    function setFloorIndicatorFromLatLng(lat, lng) {
+        const marker = markers.floorIndicator;
+        if (!marker) return;
+
+        let snapped = pushInsideBuilding(latLng(lat, lng));
+        setMarkerLatLng(marker, snapped);
+        points.floorIndicator = [snapped.lat, snapped.lng];
+        lastValidDrag.floorIndicator = snapped;
+        updateRoutes();
+    }
+
+    function snapFloorIndicatorToOsmPoint(point) {
+        if (!point) return;
+        setFloorIndicatorFromLatLng(point.lat, point.lng);
+        selectedOsmFloorAccessId = point.id;
+        floorAccessSnapDetached = false;
+        updateOsmFloorAccessMarkerStyles();
+    }
+
+    function constrainFloorIndicatorMarker(marker) {
+        const latlng = getMarkerLatLng(marker);
+        const nearest = findNearestFloorAccess(latlng);
+
+        if (nearest && nearest.distance <= FLOOR_ACCESS_SNAP_METERS) {
+            snapFloorIndicatorToOsmPoint(nearest.point);
+            return;
+        }
+
+        if (!floorAccessSnapDetached) {
+            let reference = null;
+            if (selectedOsmFloorAccessId && osmFloorAccessCache?.length) {
+                reference =
+                    activeFloorAccessPoints().find(
+                        (point) => String(point.id) === String(selectedOsmFloorAccessId)
+                    ) || null;
+            }
+            if (!reference && nearest) reference = nearest.point;
+
+            if (reference) {
+                const refDist = distanceMeters(latlng, latLng(reference.lat, reference.lng));
+                if (refDist > FLOOR_ACCESS_DETACH_METERS) {
+                    floorAccessSnapDetached = true;
+                    selectedOsmFloorAccessId = null;
+                }
+            }
+        }
+
+        constrainInsideBuildingPlacement("floorIndicator", marker, latlng);
+        if (floorAccessSnapDetached) {
+            selectedOsmFloorAccessId = null;
+        }
+        updateOsmFloorAccessMarkerStyles();
+    }
+
+    function osmFloorAccessGeoJson(points) {
+        return {
+            type: "FeatureCollection",
+            features: points.map((point) => ({
+                type: "Feature",
+                properties: {
+                    id: point.id,
+                    kind: point.kind,
+                    level: point.level || "",
+                    selected: String(point.id) === String(selectedOsmFloorAccessId),
+                },
+                geometry: {
+                    type: "Point",
+                    coordinates: [point.lng, point.lat],
+                },
+            })),
+        };
+    }
+
+    function updateOsmFloorAccessMarkerStyles() {
+        const source = map.getSource("osm-floor-access");
+        if (!source || !osmFloorAccessCache?.length) return;
+        source.setData(osmFloorAccessGeoJson(activeFloorAccessPoints()));
+    }
+
+    function showOsmFloorAccessMarkers(points) {
+        const source = map.getSource("osm-floor-access");
+        if (!source) return;
+        source.setData(osmFloorAccessGeoJson(activeFloorAccessPoints(points)));
+        map.setLayoutProperty("osm-floor-access", "visibility", "visible");
+    }
+
+    function hideOsmFloorAccess() {
+        const source = map.getSource("osm-floor-access");
+        if (!source) return;
+        source.setData(emptyFeatureCollection());
+        map.setLayoutProperty("osm-floor-access", "visibility", "none");
+    }
+
+    function pickDefaultOsmFloorAccess(points, reference) {
+        if (!points?.length) return null;
+        const elevator = points.find((point) => point.kind === "elevator");
+        if (elevator) return elevator;
+        if (!reference) return points[0];
+
+        const nearest = findNearestFloorAccess(reference, points);
+        return nearest?.point || points[0];
+    }
+
+    function applyDefaultOsmFloorAccess(points) {
+        if (floorAccessSnapDetached || !markers.floorIndicator) return;
+
+        const activePoints = activeFloorAccessPoints(points);
+        const currentSelection = activePoints.find(
+            (point) => String(point.id) === String(selectedOsmFloorAccessId)
+        );
+        if (currentSelection) return;
+
+        selectedOsmFloorAccessId = null;
+        const reference = getMarkerLatLng(markers.floorIndicator);
+        const selected = pickDefaultOsmFloorAccess(activePoints, reference);
+        if (!selected) return;
+        snapFloorIndicatorToOsmPoint(selected);
+    }
+
+    function finishOsmFloorAccessLoad(points) {
+        if (wizardStep === "floor") {
+            showOsmFloorAccessMarkers(points);
+        }
+        applyDefaultOsmFloorAccess(points);
+    }
+
+    async function loadOsmFloorAccess() {
+        if (!outlineApi?.fetchFloorAccessPoints || !hasBuilding()) return;
+
+        const center = buildingBounds.getCenter();
+        const cacheKey = buildingOsm?.id
+            ? `${buildingOsm.type}:${buildingOsm.id}`
+            : `center:${center.lat.toFixed(5)},${center.lng.toFixed(5)}`;
+        if (osmFloorAccessCacheKey === cacheKey && osmFloorAccessCache) {
+            finishOsmFloorAccessLoad(osmFloorAccessCache);
+            return;
+        }
+
+        if (osmFloorAccessLoading) return;
+        osmFloorAccessLoading = true;
+
+        try {
+            const raw = await outlineApi.fetchFloorAccessPoints(
+                buildingOsm?.type,
+                buildingOsm?.id,
+                FLOOR_ACCESS_QUERY_RADIUS_METERS,
+                center
+            );
+            osmFloorAccessCacheKey = cacheKey;
+            osmFloorAccessCache = filterFloorAccessForBuilding(raw);
+            if (!osmFloorAccessCache.length && raw.length) {
+                osmFloorAccessCache = raw;
+            }
+            finishOsmFloorAccessLoad(osmFloorAccessCache);
+        } catch (error) {
+            console.warn("[TupTup] Błąd pobierania wind/schodów z OSM:", error);
+        } finally {
+            osmFloorAccessLoading = false;
+        }
+    }
+
     function pickMainOsmEntrance(entrances) {
         if (!entrances?.length) return null;
         return (
@@ -1052,6 +1289,7 @@
 
     async function loadBuildingOverpassData() {
         await loadOsmEntrances();
+        await loadOsmFloorAccess();
         loadFootwayGraph();
     }
 
@@ -1077,6 +1315,11 @@
 
         if (wizardStep === "entrance" && key === "entrance") {
             constrainEntranceMarker(marker);
+            return;
+        }
+
+        if (wizardStep === "floor" && key === "floorIndicator") {
+            constrainFloorIndicatorMarker(marker);
             return;
         }
 
@@ -1119,6 +1362,7 @@
                 const constrained =
                     (wizardStep === "parking" && key === "parking") ||
                     (wizardStep === "entrance" && key === "entrance") ||
+                    (wizardStep === "floor" && key === "floorIndicator") ||
                     isInsideBuildingPlacementKey(key);
 
                 if (constrained) constrainMarkerPosition(key, marker);
@@ -1130,12 +1374,16 @@
                 if (wizardStep === "entrance" && key === "entrance") {
                     constrainEntranceMarker(marker);
                 }
+                if (wizardStep === "floor" && key === "floorIndicator") {
+                    constrainFloorIndicatorMarker(marker);
+                }
                 if (isInsideBuildingPlacementKey(key)) {
                     constrainMarkerPosition(key, marker);
                 }
                 const point = getMarkerLatLng(marker);
                 points[key] = [point.lat, point.lng];
                 updateOsmEntranceMarkerStyles();
+                updateOsmFloorAccessMarkerStyles();
                 updateRoutes();
             });
         });
@@ -1316,6 +1564,12 @@
 
         if (step === "floor" && markers.floorIndicator) {
             ensureInsideBuildingPlacement("floorIndicator");
+            if (osmFloorAccessCache?.length) {
+                constrainFloorIndicatorMarker(markers.floorIndicator);
+            }
+            loadOsmFloorAccess();
+        } else {
+            hideOsmFloorAccess();
         }
 
         if (step === "destination" && markers.delivery) {
@@ -1344,6 +1598,10 @@
         if (!marker || !markerOnMap(marker)) return;
         refreshFloorIndicatorDigit(marker.getElement()?.querySelector(".map-marker"));
         refreshMarkerIcons(marker.getElement());
+        if (wizardStep === "floor" && osmFloorAccessCache?.length) {
+            applyDefaultOsmFloorAccess(osmFloorAccessCache);
+            updateOsmFloorAccessMarkerStyles();
+        }
     });
 
     const locateButton = mapArea.querySelector(".map-control-locate");
@@ -1395,6 +1653,22 @@
     });
 
     resetButton?.addEventListener("click", fitMapView);
+
+    map.on("click", "osm-floor-access", (event) => {
+        const feature = event.features?.[0];
+        const id = feature?.properties?.id;
+        if (id == null || !osmFloorAccessCache) return;
+        const point = activeFloorAccessPoints().find((item) => String(item.id) === String(id));
+        if (point) snapFloorIndicatorToOsmPoint(point);
+    });
+
+    map.on("mouseenter", "osm-floor-access", () => {
+        map.getCanvas().style.cursor = "pointer";
+    });
+
+    map.on("mouseleave", "osm-floor-access", () => {
+        map.getCanvas().style.cursor = "";
+    });
 
     map.on("click", "osm-entrances", (event) => {
         const feature = event.features?.[0];
@@ -1455,6 +1729,11 @@
         selectedOsmEntranceId = null;
         entranceSnapDetached = false;
         hideOsmEntrances();
+        osmFloorAccessCache = null;
+        osmFloorAccessCacheKey = null;
+        selectedOsmFloorAccessId = null;
+        floorAccessSnapDetached = false;
+        hideOsmFloorAccess();
         footwayGraph = null;
         footwayGraphCacheKey = null;
         footwayRoutingApi?.clearCache?.();
@@ -1508,6 +1787,7 @@
 
     map.on("load", () => {
         hideOsmEntrances();
+        hideOsmFloorAccess();
         hideUserLocation();
     });
 
