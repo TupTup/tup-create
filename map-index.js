@@ -671,7 +671,7 @@
     }
 
     function isBuildingFillStep() {
-        return wizardStep === "entrance" || wizardStep === "destination";
+        return wizardStep === "entrance" || wizardStep === "floor" || wizardStep === "destination";
     }
 
     function pointInBuilding(latlng) {
