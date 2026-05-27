@@ -565,20 +565,36 @@
         applyWizardStep("parking");
     }
 
-    function createMarkerElement(type, label, active) {
+    const MAP_MARKER_META = {
+        parking: { type: "parking", icon: "circle-parking", label: "Parking" },
+        entrance: { type: "entry", icon: "door-closed", label: "Wejście" },
+        delivery: { type: "target", icon: "map-pin", label: "Miejsce dostawy" },
+    };
+
+    function refreshMarkerIcons(root) {
+        if (typeof lucide === "undefined" || typeof lucide.createIcons !== "function") return;
+        lucide.createIcons({
+            attrs: { "aria-hidden": "true", focusable: "false" },
+            ...(root ? { root } : {}),
+        });
+    }
+
+    function createMarkerElement(type, iconName, ariaLabel, active) {
         const host = document.createElement("div");
         host.className = "map-marker-host";
         const activeClass = active ? " map-marker--active" : "";
-        host.innerHTML = `<div class="map-marker map-marker--${type} map-marker--draggable${activeClass}" role="img" aria-label="${label}">${label === "entry" ? "" : label}</div>`;
+        host.innerHTML = `<div class="map-marker map-marker--${type} map-marker--draggable${activeClass}" role="img" aria-label="${ariaLabel}"><i data-lucide="${iconName}"></i></div>`;
+        refreshMarkerIcons(host);
         return host;
     }
 
-    function updateMarkerAppearance(marker, type, label, active) {
+    function updateMarkerAppearance(marker, type, iconName, ariaLabel, active) {
         const el = marker.getElement()?.querySelector(".map-marker");
         if (!el) return;
         el.className = `map-marker map-marker--${type} map-marker--draggable${active ? " map-marker--active" : ""}`;
-        el.setAttribute("aria-label", label);
-        el.textContent = label === "entry" ? "" : label;
+        el.setAttribute("aria-label", ariaLabel);
+        el.innerHTML = `<i data-lucide="${iconName}"></i>`;
+        refreshMarkerIcons(el);
     }
 
     function getLatLng(key) {
@@ -618,8 +634,9 @@
         syncCoords();
     }
 
-    function addMarker(key, type, label) {
-        const element = createMarkerElement(type, label, false);
+    function addMarker(key) {
+        const meta = MAP_MARKER_META[key];
+        const element = createMarkerElement(meta.type, meta.icon, meta.label, false);
         const marker = new maplibregl.Marker({
             element,
             anchor: "bottom",
@@ -919,9 +936,9 @@
     }
 
     function initMarkersAndRoutes() {
-        addMarker("parking", "parking", "P");
-        addMarker("entrance", "entry", "entry");
-        addMarker("delivery", "target", "◎");
+        addMarker("parking");
+        addMarker("entrance");
+        addMarker("delivery");
         addRoute("parking-entrance", "parking", "entrance");
         addRoute("entrance-delivery", "entrance", "delivery");
 
@@ -1103,14 +1120,13 @@
 
         Object.keys(markers).forEach((key) => {
             const marker = markers[key];
+            const meta = MAP_MARKER_META[key];
             const visible = config.markers.includes(key);
             const active = config.active === key;
-            const type = key === "delivery" ? "target" : key === "entrance" ? "entry" : "parking";
-            const label = type === "entry" ? "entry" : type === "target" ? "◎" : "P";
 
             if (visible) {
                 if (!markerOnMap(marker)) marker.addTo(map);
-                updateMarkerAppearance(marker, type, label, active);
+                updateMarkerAppearance(marker, meta.type, meta.icon, meta.label, active);
                 marker.getElement().style.zIndex = active ? "1000" : "500";
                 setMarkerDraggingState(marker, config.draggable.includes(key));
             } else if (markerOnMap(marker)) {

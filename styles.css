@@ -10,7 +10,6 @@
     --radius-xl: 28px;
     --radius-lg: 20px;
     --radius-md: 14px;
-    --icon-entrance-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' fill-rule='evenodd' d='M3 3h18v18H3V3Zm3 3v12h12V6H6Z'/%3E%3Crect x='6' y='10.5' width='5' height='3' fill='%23000'/%3E%3Cpath fill='%23000' d='M11 9.5L15.5 12 11 14.5Z'/%3E%3C/svg%3E");
     --icon-add-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M19 11H13V5h-2v6H5v2h6v6h2v-6h6v-2z'/%3E%3C/svg%3E");
 }
 
@@ -205,9 +204,14 @@ body {
     place-items: center;
     background: var(--strong);
     color: #ffffff;
-    font-weight: 900;
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
     position: relative;
+}
+
+.map-marker svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 2;
 }
 
 .map-marker::after {
@@ -227,27 +231,6 @@ body {
     background: var(--surface);
     color: var(--strong);
     border: 3px solid var(--strong);
-}
-
-.map-marker--entry {
-    font-size: 0;
-}
-
-.map-marker--entry::before {
-    content: "";
-    position: relative;
-    z-index: 1;
-    width: 24px;
-    height: 24px;
-    background-color: currentColor;
-    -webkit-mask-image: var(--icon-entrance-mask);
-    mask-image: var(--icon-entrance-mask);
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
-    -webkit-mask-position: center;
-    mask-position: center;
-    -webkit-mask-size: contain;
-    mask-size: contain;
 }
 
 .map-marker--entry::after,
