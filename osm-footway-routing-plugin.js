@@ -5,7 +5,11 @@
     const turf = global.turf;
     const outlineApi = global.TupTupBuildingOutline;
 
-    const OVERPASS_URL = outlineApi?.OVERPASS_URL || "https://overpass-api.de/api/interpreter";
+    const postOverpass =
+        outlineApi?.postOverpass ||
+        (async (query) => {
+            throw new Error("TupTupOsmFootwayRouting wymaga TupTupBuildingOutline.postOverpass");
+        });
     const DEFAULT_RADIUS_METERS = 80;
     const MIN_RADIUS_METERS = 60;
     const MAX_SNAP_METERS = 28;
@@ -67,24 +71,6 @@
   way["highway"]["footway"](around:${radius},${lat},${lng});
 );
 out geom;`;
-    }
-
-    async function postOverpass(query) {
-        const response = await fetch(OVERPASS_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-                Accept: "application/json",
-                "User-Agent": "TupTup/1.0",
-            },
-            body: `data=${encodeURIComponent(query)}`,
-        });
-
-        if (!response.ok) {
-            throw new Error(`Overpass HTTP ${response.status}`);
-        }
-
-        return response.json();
     }
 
     function wayToSegments(element) {

@@ -4,7 +4,7 @@
  * Wejście: buildingPolygon + entrancePoint + destinationPoint.
  * Bez ręcznych korytarzy, BIM ani CAD – generuje synthetic corridors i trasę centerline.
  *
- * Etapy: orientacja → OBB → inset → osie korytarzy → snap → routing ortogonalny (Dijkstra).
+ * Etapy: orientacja → inset polygon → routing po obrysie inset → LineString.
  */
 (function (global) {
     const turf = global.turf;
@@ -12,10 +12,9 @@
         console.warn("[SyntheticIndoorCorridorService] Brak Turf.js – moduł niedostępny.");
     }
 
-    const DEFAULT_WALL_MARGIN_METERS = 1.8;
+    const DEFAULT_WALL_MARGIN_METERS = 3;
     const MIN_WALL_MARGIN_METERS = 0.55;
     const BUFFER_STEPS = 4;
-    const GRID_DIVISIONS = 3;
     const COORD_PRECISION = 7;
     const DEDUPE_TOLERANCE_METERS = 0.05;
     const MIN_TURN_DEGREES = 12;
@@ -23,7 +22,6 @@
 
     function SyntheticIndoorCorridorService(options = {}) {
         this._wallMarginMeters = options.wallMarginMeters ?? DEFAULT_WALL_MARGIN_METERS;
-        this._gridDivisions = options.gridDivisions ?? GRID_DIVISIONS;
         this._maxSnapDistanceMeters = options.maxSnapDistanceMeters ?? null;
     }
 
@@ -60,6 +58,7 @@
         line.properties.segments = segments;
         line.properties.turnPoints = turnPoints;
         line.properties.diagnostics = ctx.diagnostics;
+        line.properties.insetPolygon = ctx.insetPolygon;
         line.properties.syntheticCorridors = ctx.syntheticCorridors;
 
         return line;
@@ -72,6 +71,17 @@
 
         const ctx = buildPipelineContext(input, this);
         return ctx.syntheticCorridors;
+    };
+
+    SyntheticIndoorCorridorService.prototype.generateInsetPolygon = function generateInsetPolygon(input) {
+        if (!turf) {
+            throw new Error("SyntheticIndoorCorridorService wymaga Turf.js");
+        }
+
+        const buildingPolygon = toPolygonFeature(input.buildingPolygon, "buildingPolygon");
+        const wallMarginMeters =
+            typeof input.wallMarginMeters === "number" ? input.wallMarginMeters : this._wallMarginMeters;
+        return buildInsetPolygon(buildingPolygon, wallMarginMeters);
     };
 
     SyntheticIndoorCorridorService.prototype.analyze = function analyze(input) {
@@ -94,24 +104,16 @@
         const wallMarginMeters =
             typeof input.wallMarginMeters === "number" ? input.wallMarginMeters : service._wallMarginMeters;
         const insetResult = buildInsetPolygon(buildingPolygon, wallMarginMeters);
-        const gridDivisions =
-            typeof input.gridDivisions === "number" ? input.gridDivisions : service._gridDivisions;
         const maxSnapDistanceMeters =
             typeof input.maxSnapDistanceMeters === "number"
                 ? input.maxSnapDistanceMeters
                 : service._maxSnapDistanceMeters ??
-                  Math.max(18, Math.min(orientedBBox.maxSpanMeters * MAX_SNAP_RATIO, 55));
+                  Math.max(
+                      insetResult.marginMeters + 12,
+                      Math.min(orientedBBox.maxSpanMeters * MAX_SNAP_RATIO, 55)
+                  );
 
-        const syntheticCorridors = buildSyntheticCorridorAxes({
-            buildingPolygon,
-            insetPolygon: insetResult.polygon,
-            center,
-            primaryBearing,
-            secondaryBearing,
-            orientedBBox,
-            anchorPoints: [entrancePoint, destinationPoint],
-            gridDivisions,
-        });
+        const syntheticCorridors = buildInsetCorridorNetwork(insetResult.polygon);
 
         const corridorSegments = extractCorridorSegments(syntheticCorridors);
         const entranceSnap = snapPointToCorridors(
@@ -134,12 +136,11 @@
             insetMarginMeters: insetResult.marginMeters,
             insetFallback: insetResult.fallback,
             insetAreaRatio: computeAreaRatio(insetResult.polygon, buildingPolygon),
-            corridorAxisCount: syntheticCorridors.properties?.axisCount ?? null,
             corridorSegmentCount: corridorSegments.length,
+            corridorSource: "inset-polygon-outline",
             entranceSnapDistanceMeters: entranceSnap.distanceMeters,
             destinationSnapDistanceMeters: destinationSnap.distanceMeters,
             maxSnapDistanceMeters,
-            gridDivisions,
         };
 
         return {
@@ -304,147 +305,40 @@
         return inner / outer;
     }
 
-    function collectAxisOffsetRange(polygonFeature, originCoord, axisBearing) {
-        const ring = polygonFeature.geometry.coordinates[0];
-        let min = Infinity;
-        let max = -Infinity;
-
-        ring.forEach((coord) => {
-            const offset = offsetAlongBearingMeters(originCoord, coord, axisBearing);
-            min = Math.min(min, offset);
-            max = Math.max(max, offset);
-        });
-
-        return { min, max };
-    }
-
-    function buildOrientedAxisLine(originCoord, lineBearing, crossBearing, crossOffsetMeters, halfLengthMeters) {
-        const origin = turf.point(originCoord);
-        const base = turf.rhumbDestination(origin, crossOffsetMeters, crossBearing, { units: "meters" });
-        const start = turf.rhumbDestination(base, halfLengthMeters, lineBearing, { units: "meters" });
-        const end = turf.rhumbDestination(base, halfLengthMeters, lineBearing + 180, { units: "meters" });
-        return turf.lineString([start.geometry.coordinates, end.geometry.coordinates]);
-    }
-
-    function clipLineChordsToPolygon(axisLine, polygon) {
-        const boundary = turf.polygonToLine(polygon);
-        const hits = turf.lineIntersect(axisLine, boundary);
-        if (hits.features.length < 2) return [];
-
-        const sorted = hits.features
-            .map((feature) => ({
-                coord: feature.geometry.coordinates,
-                location: turf.nearestPointOnLine(axisLine, feature, { units: "meters" }).properties
-                    .location,
-            }))
-            .sort((a, b) => a.location - b.location);
-
-        const chords = [];
-        for (let i = 0; i < sorted.length - 1; i++) {
-            const slice = turf.lineSlice(
-                turf.point(sorted[i].coord),
-                turf.point(sorted[i + 1].coord),
-                axisLine
-            );
-            const sliceLength = turf.length(slice, { units: "meters" });
-            if (sliceLength <= DEDUPE_TOLERANCE_METERS) continue;
-
-            const mid = turf.along(slice, sliceLength / 2, { units: "meters" });
-            if (turf.booleanPointInPolygon(mid, polygon, { ignoreBoundary: true })) {
-                chords.push(slice.geometry.coordinates);
-            }
-        }
-
-        return chords;
-    }
-
-    function addAxisOffsets(target, range, divisions, extraOffsets) {
-        target.add(0);
-        for (let i = 1; i < divisions; i++) {
-            const t = i / divisions;
-            target.add(range.min + (range.max - range.min) * t);
-        }
-        extraOffsets.forEach((value) => {
-            if (Number.isFinite(value)) target.add(value);
-        });
-    }
-
-    function dedupeCorridorCoords(allCoords) {
-        const out = [];
-        allCoords.forEach((coords) => {
-            if (!coords || coords.length < 2) return;
-            const duplicate = out.some((existing) => {
-                if (existing.length !== coords.length) return false;
-                return existing.every((coord, index) => coordsEqual(coord, coords[index]));
-            });
-            if (!duplicate) out.push(coords);
-        });
-        return out;
-    }
-
-    function buildSyntheticCorridorAxes(params) {
-        const {
-            insetPolygon,
-            center,
-            primaryBearing,
-            secondaryBearing,
-            anchorPoints,
-            gridDivisions,
-        } = params;
-
-        const halfLengthMeters = params.orientedBBox.maxSpanMeters * 0.75 + 8;
-        const primaryRange = collectAxisOffsetRange(insetPolygon, center, primaryBearing);
-        const secondaryRange = collectAxisOffsetRange(insetPolygon, center, secondaryBearing);
-        const parallelPrimaryOffsets = new Set();
-        const parallelSecondaryOffsets = new Set();
-        const anchorPrimaryOffsets = [];
-        const anchorSecondaryOffsets = [];
-
-        anchorPoints.forEach((pointFeature) => {
-            const coord = pointFeature.geometry.coordinates;
-            anchorPrimaryOffsets.push(offsetAlongBearingMeters(center, coord, primaryBearing));
-            anchorSecondaryOffsets.push(offsetAlongBearingMeters(center, coord, secondaryBearing));
-        });
-
-        addAxisOffsets(parallelPrimaryOffsets, secondaryRange, gridDivisions, anchorSecondaryOffsets);
-        addAxisOffsets(parallelSecondaryOffsets, primaryRange, gridDivisions, anchorPrimaryOffsets);
+    function buildInsetCorridorNetwork(insetPolygon) {
+        const outline = turf.polygonToLine(insetPolygon);
+        const lineFeatures =
+            outline.geometry.type === "LineString"
+                ? [outline]
+                : outline.geometry.coordinates.map((coords) => turf.lineString(coords));
 
         const corridorCoords = [];
-
-        parallelPrimaryOffsets.forEach((crossOffsetMeters) => {
-            const axisLine = buildOrientedAxisLine(
-                center,
-                primaryBearing,
-                secondaryBearing,
-                crossOffsetMeters,
-                halfLengthMeters
-            );
-            corridorCoords.push(...clipLineChordsToPolygon(axisLine, insetPolygon));
+        lineFeatures.forEach((lineFeature) => {
+            const coords = lineFeature.geometry.coordinates;
+            for (let i = 0; i < coords.length - 1; i++) {
+                if (coordsEqual(coords[i], coords[i + 1])) continue;
+                corridorCoords.push([coords[i], coords[i + 1]]);
+            }
         });
 
-        parallelSecondaryOffsets.forEach((crossOffsetMeters) => {
-            const axisLine = buildOrientedAxisLine(
-                center,
-                secondaryBearing,
-                primaryBearing,
-                crossOffsetMeters,
-                halfLengthMeters
-            );
-            corridorCoords.push(...clipLineChordsToPolygon(axisLine, insetPolygon));
-        });
-
-        const uniqueCoords = dedupeCorridorCoords(corridorCoords);
-        if (!uniqueCoords.length) {
-            throw new Error("SyntheticIndoorCorridorService: brak synthetic corridor axes");
+        if (!corridorCoords.length) {
+            throw new Error("SyntheticIndoorCorridorService: brak segmentów inset polygon");
         }
 
-        return turf.multiLineString(uniqueCoords, {
-            source: "synthetic-indoor-corridor",
-            axisCount: parallelPrimaryOffsets.size + parallelSecondaryOffsets.size,
-            segmentCount: uniqueCoords.length,
-            primaryBearing,
-            secondaryBearing,
+        return turf.multiLineString(corridorCoords, {
+            source: "inset-polygon-outline",
+            segmentCount: corridorCoords.length,
         });
+    }
+
+    function insetPolygonOutlineFeature(insetPolygon, properties = {}) {
+        const outline = turf.polygonToLine(insetPolygon);
+        outline.properties = {
+            source: "inset-polygon",
+            ...(outline.properties || {}),
+            ...properties,
+        };
+        return outline;
     }
 
     function extractCorridorSegments(virtualCorridors) {
@@ -750,6 +644,8 @@
     global.TupTupSyntheticIndoorCorridor = {
         DEFAULT_WALL_MARGIN_METERS,
         SyntheticIndoorCorridorService,
+        buildInsetPolygon,
+        insetPolygonOutlineFeature,
         route: function route(input) {
             return new SyntheticIndoorCorridorService().route(input);
         },

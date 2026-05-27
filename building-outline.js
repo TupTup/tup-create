@@ -1,5 +1,13 @@
 (function (global) {
-    const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+    const OVERPASS_ENDPOINTS = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+    ];
+    const OVERPASS_URL = OVERPASS_ENDPOINTS[0];
+    const OVERPASS_MIN_GAP_MS = 1100;
+
+    let overpassQueue = Promise.resolve();
+    let overpassLastDoneAt = 0;
 
     /** Gdy w OSM brak tagu building:levels */
     const FALLBACK_BUILDING_LEVELS = 5;
@@ -566,22 +574,72 @@
         return buildingFromElement(element, { spec, candidates });
     }
 
-    async function postOverpass(query) {
-        const response = await fetch(OVERPASS_URL, {
+    function overpassRetryDelayMs(response, attempt) {
+        const retryAfter = response
+            ? Number.parseInt(response.headers.get("Retry-After"), 10)
+            : Number.NaN;
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+            return retryAfter * 1000;
+        }
+        return 1500 * (attempt + 1);
+    }
+
+    async function postOverpassOnce(url, query) {
+        const response = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
                 Accept: "application/json",
-                "User-Agent": "TupTup/1.0",
+                "User-Agent": "TupTup/1.0 (delivery-map; contact@tuptup.github.io)",
             },
             body: `data=${encodeURIComponent(query)}`,
         });
+
+        if (response.status === 429 || response.status === 503 || response.status === 504) {
+            const error = new Error(`Overpass HTTP ${response.status}`);
+            error.retryable = true;
+            error.retryDelayMs = overpassRetryDelayMs(response, 0);
+            throw error;
+        }
 
         if (!response.ok) {
             throw new Error(`Overpass HTTP ${response.status}`);
         }
 
         return response.json();
+    }
+
+    async function runPostOverpass(query) {
+        const waitForGap = overpassLastDoneAt + OVERPASS_MIN_GAP_MS - Date.now();
+        if (waitForGap > 0) {
+            await new Promise((resolve) => setTimeout(resolve, waitForGap));
+        }
+
+        let lastError = null;
+
+        for (const url of OVERPASS_ENDPOINTS) {
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                try {
+                    const data = await postOverpassOnce(url, query);
+                    overpassLastDoneAt = Date.now();
+                    return data;
+                } catch (error) {
+                    lastError = error;
+                    if (!error.retryable || attempt >= 2) break;
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, error.retryDelayMs || overpassRetryDelayMs(null, attempt))
+                    );
+                }
+            }
+        }
+
+        throw lastError || new Error("Overpass request failed");
+    }
+
+    function postOverpass(query) {
+        const task = overpassQueue.then(() => runPostOverpass(query));
+        overpassQueue = task.catch(() => {});
+        return task;
     }
 
     async function fetchOutline(spec) {
@@ -633,6 +691,8 @@
     global.TupTupBuildingOutline = {
         FALLBACK_LEVELS: FALLBACK_BUILDING_LEVELS,
         OVERPASS_URL,
+        OVERPASS_ENDPOINTS,
+        postOverpass,
         parseOsmSpec,
         parseOsmFromUrl,
         parseOsmFromPage,

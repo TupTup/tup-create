@@ -28,15 +28,15 @@
     let syntheticCorridorsCache = null;
     let syntheticCorridorsCacheKey = null;
 
-    function getSyntheticCorridors(from, to) {
-        if (!syntheticIndoorRouting || !hasBuilding() || !from || !to) return null;
+    function getInsetPolygonOutline(from, to) {
+        if (!syntheticIndoorRouting || !syntheticIndoorApi || !hasBuilding()) return null;
 
         const cacheKey = [
             buildingOutline
                 .map((coord) => `${coord[0].toFixed(5)},${coord[1].toFixed(5)}`)
                 .join("|"),
-            `${from.lng.toFixed(5)},${from.lat.toFixed(5)}`,
-            `${to.lng.toFixed(5)},${to.lat.toFixed(5)}`,
+            from ? `${from.lng.toFixed(5)},${from.lat.toFixed(5)}` : "",
+            to ? `${to.lng.toFixed(5)},${to.lat.toFixed(5)}` : "",
         ].join("::");
 
         if (syntheticCorridorsCacheKey === cacheKey && syntheticCorridorsCache) {
@@ -44,42 +44,36 @@
         }
 
         try {
-            syntheticCorridorsCache = syntheticIndoorRouting.generateCorridors({
+            const inset = syntheticIndoorRouting.generateInsetPolygon({
                 buildingPolygon: buildingPolygonGeoJson(buildingOutline),
-                entrancePoint: { lng: from.lng, lat: from.lat },
-                destinationPoint: { lng: to.lng, lat: to.lat },
+            });
+            syntheticCorridorsCache = syntheticIndoorApi.insetPolygonOutlineFeature(inset.polygon, {
+                marginMeters: inset.marginMeters,
+                fallback: inset.fallback,
             });
             syntheticCorridorsCacheKey = cacheKey;
             return syntheticCorridorsCache;
         } catch (error) {
-            console.warn("[TupTup] Nie udało się wygenerować synthetic corridors:", error);
+            console.warn("[TupTup] Nie udało się wygenerować inset polygon:", error);
             syntheticCorridorsCache = null;
             syntheticCorridorsCacheKey = cacheKey;
             return null;
         }
     }
 
-    function updateVirtualCorridorsSource(from, to) {
-        const source = map.getSource("virtual-corridors");
+    function updateInsetPolygonSource(from, to) {
+        const source = map.getSource("inset-polygon");
         if (!source) return;
 
-        const corridors = getSyntheticCorridors(from, to);
-        if (!corridors) {
+        const outline = getInsetPolygonOutline(from, to);
+        if (!outline) {
             source.setData(emptyFeatureCollection());
             return;
         }
 
         source.setData({
             type: "FeatureCollection",
-            features: [
-                corridors.type === "Feature"
-                    ? corridors
-                    : {
-                          type: "Feature",
-                          properties: { ...(corridors.properties || {}) },
-                          geometry: corridors.geometry,
-                      },
-            ],
+            features: [outline],
         });
     }
     const MAP_FALLBACK_CENTER = [52.2297, 21.0122];
@@ -233,7 +227,11 @@
             sources: {
                 osm: {
                     type: "raster",
-                    tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                    tiles: [
+                        "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                        "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                        "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    ],
                     tileSize: 256,
                     maxzoom: 19,
                     attribution:
@@ -247,7 +245,7 @@
                     type: "geojson",
                     data: emptyFeatureCollection(),
                 },
-                "virtual-corridors": {
+                "inset-polygon": {
                     type: "geojson",
                     data: emptyFeatureCollection(),
                 },
@@ -286,17 +284,17 @@
                     },
                 },
                 {
-                    id: "virtual-corridors",
+                    id: "inset-polygon",
                     type: "line",
-                    source: "virtual-corridors",
+                    source: "inset-polygon",
                     paint: {
-                        "line-color": "#6b7280",
-                        "line-width": 2,
-                        "line-opacity": 0.55,
-                        "line-dasharray": [1, 2],
+                        "line-color": "#c85a5a",
+                        "line-width": 1.5,
+                        "line-opacity": 0.7,
                     },
                     layout: {
                         "line-cap": "round",
+                        "line-join": "round",
                     },
                 },
                 {
@@ -553,7 +551,6 @@
         }
         ensureWizardStarted();
         scheduleMapLayoutRetries();
-        loadFootwayGraph();
     }
 
     function scheduleMapLayoutRetries() {
@@ -613,9 +610,9 @@
         updateRoutesSource(config?.routes || Object.keys(routeLines));
 
         if (hasBuilding() && (config?.routes || []).includes("entrance-delivery")) {
-            updateVirtualCorridorsSource(getLatLng("entrance"), getLatLng("delivery"));
+            updateInsetPolygonSource(getLatLng("entrance"), getLatLng("delivery"));
         } else {
-            updateVirtualCorridorsSource(null, null);
+            updateInsetPolygonSource(null, null);
         }
 
         syncCoords();
@@ -874,6 +871,11 @@
         } finally {
             osmEntrancesLoading = false;
         }
+    }
+
+    async function loadBuildingOverpassData() {
+        await loadOsmEntrances();
+        loadFootwayGraph();
     }
 
     function snapParkingOutside(marker) {
@@ -1242,7 +1244,7 @@
         footwayGraphCacheKey = null;
         footwayRoutingApi?.clearCache?.();
         applyBuildingOutline(building.outline);
-        loadOsmEntrances();
+        loadBuildingOverpassData();
         document.dispatchEvent(new CustomEvent("tuptup:building", { detail: building }));
     }
 
