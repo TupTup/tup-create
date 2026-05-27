@@ -46,7 +46,7 @@
         },
         floor: {
             title: "Wybierz piętro",
-            desc: "Na które piętro mamy dostarczyć przesyłkę?",
+            desc: "Wybierz piętro z listy i wskaż na mapie, gdzie się ono znajduje (np. winda, klatka).",
             nextLabel: "Dalej →",
         },
         destination: {
@@ -135,6 +135,9 @@
         });
 
         updateDeliveryFloorLabel();
+        document.dispatchEvent(
+            new CustomEvent("tuptup:floor", { detail: { value: wizardState.deliveryFloor } })
+        );
     }
 
     function buildElevatorPanel({ minLevel, maxLevel } = {}) {
@@ -269,13 +272,13 @@
         updateNavState();
         if (isFloorStep) {
             window.TupTupSheet?.expand();
+            syncElevatorPanelFromOsm();
         } else {
             window.TupTupSheet?.collapse();
         }
         window.TupTupMap?.setWizardStep(step);
 
         if (isFloorStep) {
-            syncElevatorPanelFromOsm();
             const selected = elevatorPanel?.querySelector(".elevator-floor.is-selected");
             selected?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
         }
@@ -307,7 +310,7 @@
     });
 
     document.addEventListener("tuptup:coords", (event) => {
-        const { parking, entrance, delivery } = event.detail;
+        const { parking, entrance, delivery, floorIndicator } = event.detail;
         const pairs = [
             ["parking_lat", parking[0]],
             ["parking_lng", parking[1]],
@@ -316,6 +319,10 @@
             ["delivery_lat", delivery[0]],
             ["delivery_lng", delivery[1]],
         ];
+
+        if (floorIndicator) {
+            pairs.push(["floor_lat", floorIndicator[0]], ["floor_lng", floorIndicator[1]]);
+        }
 
         pairs.forEach(([name, value]) => {
             const field = form.elements[name];

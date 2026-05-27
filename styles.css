@@ -169,6 +169,46 @@ body {
     border: 0;
 }
 
+.maplibregl-marker {
+    overflow: visible;
+}
+
+.map-marker--floor {
+    background: var(--floor);
+    border-color: var(--floor);
+    box-shadow: 0 8px 22px rgba(245, 158, 11, 0.28);
+}
+
+.map-marker--floor::after {
+    background: var(--floor);
+}
+
+.map-marker--floor__digit {
+    position: absolute;
+    top: -5px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--floor);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 14px;
+    text-align: center;
+    border: 2px solid var(--floor);
+    box-sizing: border-box;
+    z-index: 1;
+}
+
+.map-marker--active.map-marker--floor {
+    transform: scale(1.08);
+    box-shadow:
+        0 0 0 4px rgba(245, 158, 11, 0.2),
+        0 10px 26px rgba(245, 158, 11, 0.35);
+}
+
 .map-marker--draggable {
     cursor: grab;
     touch-action: none;

@@ -84,6 +84,7 @@
         parking: null,
         entrance: null,
         delivery: null,
+        floorIndicator: null,
     };
     let markersInitialized = false;
     let wizardStarted = false;
@@ -125,19 +126,19 @@
             active: "entrance",
         },
         floor: {
-            markers: ["parking", "entrance"],
+            markers: ["parking", "entrance", "floorIndicator"],
             routes: ["parking-entrance"],
-            draggable: [],
-            active: null,
+            draggable: ["floorIndicator"],
+            active: "floorIndicator",
         },
         destination: {
-            markers: ["parking", "entrance", "delivery"],
+            markers: ["parking", "entrance", "delivery", "floorIndicator"],
             routes: ["parking-entrance", "entrance-delivery"],
             draggable: ["delivery"],
             active: "delivery",
         },
         print: {
-            markers: ["parking", "entrance", "delivery"],
+            markers: ["parking", "entrance", "delivery", "floorIndicator"],
             routes: ["parking-entrance", "entrance-delivery"],
             draggable: [],
             active: null,
@@ -525,10 +526,17 @@
             );
         }
 
+        let floorIndicator = delivery;
+        if (!pointInBuilding(floorIndicator)) {
+            floorIndicator = center;
+        }
+        floorIndicator = pushInsideBuilding(floorIndicator);
+
         return {
             parking: [parking.lat, parking.lng],
             entrance: [entrance.lat, entrance.lng],
             delivery: [delivery.lat, delivery.lng],
+            floorIndicator: [floorIndicator.lat, floorIndicator.lng],
         };
     }
 
@@ -584,6 +592,7 @@
         parking: { type: "parking", icon: "circle-parking", label: "Parking" },
         entrance: { type: "entry", icon: "door-closed", label: "Wejście" },
         delivery: { type: "target", icon: "map-pin", label: "Miejsce dostawy" },
+        floorIndicator: { type: "floor", icon: "layers", label: "Położenie piętra" },
     };
 
     function refreshMarkerIcons(root) {
@@ -603,13 +612,103 @@
         return host;
     }
 
+    function getDeliveryFloorValue() {
+        const fromFlow = window.TupTupFlow?.getSelectedFloor?.();
+        if (fromFlow != null && fromFlow !== "") return String(fromFlow);
+        const input = document.getElementById("delivery-floor-input");
+        const raw = input?.value;
+        return raw == null || raw === "" ? null : String(raw);
+    }
+
+    function floorMapLabel(value) {
+        if (value === "0") return "parter";
+        if (value === "-1") return "parking";
+        return `${value} piętro`;
+    }
+
+    function floorIndicatorAriaLabel(floorValue) {
+        const base = MAP_MARKER_META.floorIndicator.label;
+        if (floorValue == null) return base;
+        return `${base}, ${floorMapLabel(floorValue)}`;
+    }
+
+    function isInsideBuildingPlacementKey(key) {
+        return (
+            (wizardStep === "floor" && key === "floorIndicator") ||
+            (wizardStep === "destination" && key === "delivery")
+        );
+    }
+
+    function constrainInsideBuildingPlacement(key, marker, latlng) {
+        if (!pointInBuilding(latlng)) {
+            setMarkerLatLng(marker, lastValidDrag[key]);
+        } else {
+            lastValidDrag[key] = latlng;
+        }
+    }
+
+    function ensureInsideBuildingPlacement(key) {
+        const marker = markers[key];
+        if (!marker || !hasBuilding()) return;
+        const current = getMarkerLatLng(marker);
+        if (pointInBuilding(current)) {
+            lastValidDrag[key] = current;
+            points[key] = [current.lat, current.lng];
+            return;
+        }
+        snapMarkerInsideBuilding(key);
+    }
+
+    function renderFloorIndicatorMarkup(floorValue, active, draggable) {
+        const digit = floorValue != null ? String(floorValue) : "";
+        const activeClass = active ? " map-marker--active" : "";
+        const dragClass = draggable ? " map-marker--draggable" : "";
+        const digitHtml = digit
+            ? `<span class="map-marker--floor__digit" aria-hidden="true">${digit}</span>`
+            : "";
+        const label = floorIndicatorAriaLabel(floorValue);
+        return `<div class="map-marker map-marker--floor${dragClass}${activeClass}" role="img" aria-label="${label}">${digitHtml}<i data-lucide="layers"></i></div>`;
+    }
+
+    function refreshFloorIndicatorDigit(markerEl) {
+        if (!markerEl) return;
+        const floor = getDeliveryFloorValue();
+        let digitEl = markerEl.querySelector(".map-marker--floor__digit");
+        if (floor != null) {
+            if (!digitEl) {
+                digitEl = document.createElement("span");
+                digitEl.className = "map-marker--floor__digit";
+                digitEl.setAttribute("aria-hidden", "true");
+                markerEl.insertBefore(digitEl, markerEl.firstChild);
+            }
+            digitEl.textContent = floor;
+        } else if (digitEl) {
+            digitEl.remove();
+        }
+        markerEl.setAttribute("aria-label", floorIndicatorAriaLabel(floor));
+    }
+
+    function markerKeyFor(marker) {
+        return Object.keys(markers).find((key) => markers[key] === marker) || null;
+    }
+
     function updateMarkerAppearance(marker, type, iconName, ariaLabel, active) {
         const el = marker.getElement()?.querySelector(".map-marker");
         if (!el) return;
-        el.className = `map-marker map-marker--${type} map-marker--draggable${active ? " map-marker--active" : ""}`;
+        const key = markerKeyFor(marker);
+        const config = wizardConfig[wizardStep];
+        const draggable = Boolean(key && config?.draggable?.includes(key));
+        el.className = `map-marker map-marker--${type}${draggable ? " map-marker--draggable" : ""}${active ? " map-marker--active" : ""}`;
         el.setAttribute("aria-label", ariaLabel);
-        el.innerHTML = `<i data-lucide="${iconName}"></i>`;
-        refreshMarkerIcons(el);
+        if (marker === markers.floorIndicator) {
+            refreshFloorIndicatorDigit(el);
+            if (!el.querySelector("[data-lucide]")) {
+                el.insertAdjacentHTML("beforeend", `<i data-lucide="layers"></i>`);
+            }
+        } else {
+            el.innerHTML = `<i data-lucide="${iconName}"></i>`;
+        }
+        refreshMarkerIcons(marker.getElement());
     }
 
     function getLatLng(key) {
@@ -631,6 +730,7 @@
                     parking: [...points.parking],
                     entrance: [...points.entrance],
                     delivery: [...points.delivery],
+                    floorIndicator: points.floorIndicator ? [...points.floorIndicator] : null,
                 },
             })
         );
@@ -651,11 +751,20 @@
 
     function addMarker(key) {
         const meta = MAP_MARKER_META[key];
-        const element = createMarkerElement(meta.type, meta.icon, meta.label, false);
+        const isFloorIndicator = key === "floorIndicator";
+        const element = isFloorIndicator
+            ? (() => {
+                  const host = document.createElement("div");
+                  host.className = "map-marker-host";
+                  host.innerHTML = renderFloorIndicatorMarkup(getDeliveryFloorValue(), false, true);
+                  refreshMarkerIcons(host);
+                  return host;
+              })()
+            : createMarkerElement(meta.type, meta.icon, meta.label, false);
         const marker = new maplibregl.Marker({
             element,
             anchor: "bottom",
-            draggable: true,
+            draggable: !isFloorIndicator,
             pitchAlignment: "map",
             rotationAlignment: "map",
         })
@@ -754,6 +863,42 @@
         }
 
         return candidate;
+    }
+
+    function pushInsideBuilding(latlng) {
+        if (!hasBuilding()) return latlng;
+        if (pointInBuilding(latlng)) return latlng;
+
+        const center = buildingBounds.getCenter();
+        const onOutline = closestPointOnBuildingOutline(latlng);
+        const dLat = center.lat - onOutline.lat;
+        const dLng = center.lng - onOutline.lng;
+        const len = Math.hypot(dLat, dLng) || 1e-9;
+        let margin = 0.00008;
+
+        let candidate = latLng(
+            onOutline.lat + (dLat / len) * margin,
+            onOutline.lng + (dLng / len) * margin
+        );
+
+        for (let attempt = 0; !pointInBuilding(candidate) && attempt < 12; attempt++) {
+            margin *= 1.4;
+            candidate = latLng(
+                onOutline.lat + (dLat / len) * margin,
+                onOutline.lng + (dLng / len) * margin
+            );
+        }
+
+        return pointInBuilding(candidate) ? candidate : center;
+    }
+
+    function snapMarkerInsideBuilding(key) {
+        const marker = markers[key];
+        if (!marker || !hasBuilding()) return;
+        const snapped = pushInsideBuilding(getMarkerLatLng(marker));
+        setMarkerLatLng(marker, snapped);
+        points[key] = [snapped.lat, snapped.lng];
+        lastValidDrag[key] = snapped;
     }
 
     function snapEntrancePointToOutline(latlng) {
@@ -935,12 +1080,8 @@
             return;
         }
 
-        if (wizardStep === "destination" && key === "delivery") {
-            if (!pointInBuilding(latlng)) {
-                setMarkerLatLng(marker, lastValidDrag[key]);
-            } else {
-                lastValidDrag[key] = latlng;
-            }
+        if (isInsideBuildingPlacementKey(key)) {
+            constrainInsideBuildingPlacement(key, marker, latlng);
         }
     }
 
@@ -954,12 +1095,23 @@
         addMarker("parking");
         addMarker("entrance");
         addMarker("delivery");
+        if (!points.floorIndicator && points.entrance) {
+            points.floorIndicator = [...points.entrance];
+        }
+        addMarker("floorIndicator");
+        if (markers.floorIndicator) markers.floorIndicator.remove();
         addRoute("parking-entrance", "parking", "entrance");
         addRoute("entrance-delivery", "entrance", "delivery");
 
         Object.entries(markers).forEach(([key, marker]) => {
             marker.on("dragstart", () => {
-                lastValidDrag[key] = getMarkerLatLng(marker);
+                let start = getMarkerLatLng(marker);
+                if (isInsideBuildingPlacementKey(key) && hasBuilding() && !pointInBuilding(start)) {
+                    start = pushInsideBuilding(start);
+                    setMarkerLatLng(marker, start);
+                    points[key] = [start.lat, start.lng];
+                }
+                lastValidDrag[key] = start;
                 map.getCanvasContainer().classList.add("map-dragging");
             });
 
@@ -967,7 +1119,7 @@
                 const constrained =
                     (wizardStep === "parking" && key === "parking") ||
                     (wizardStep === "entrance" && key === "entrance") ||
-                    (wizardStep === "destination" && key === "delivery");
+                    isInsideBuildingPlacementKey(key);
 
                 if (constrained) constrainMarkerPosition(key, marker);
                 updateRoutes();
@@ -977,6 +1129,9 @@
                 map.getCanvasContainer().classList.remove("map-dragging");
                 if (wizardStep === "entrance" && key === "entrance") {
                     constrainEntranceMarker(marker);
+                }
+                if (isInsideBuildingPlacementKey(key)) {
+                    constrainMarkerPosition(key, marker);
                 }
                 const point = getMarkerLatLng(marker);
                 points[key] = [point.lat, point.lng];
@@ -1136,12 +1291,18 @@
         Object.keys(markers).forEach((key) => {
             const marker = markers[key];
             const meta = MAP_MARKER_META[key];
+            if (!meta) return;
+
             const visible = config.markers.includes(key);
             const active = config.active === key;
 
             if (visible) {
                 if (!markerOnMap(marker)) marker.addTo(map);
-                updateMarkerAppearance(marker, meta.type, meta.icon, meta.label, active);
+                const label =
+                    key === "floorIndicator"
+                        ? floorIndicatorAriaLabel(getDeliveryFloorValue())
+                        : meta.label;
+                updateMarkerAppearance(marker, meta.type, meta.icon, label, active);
                 marker.getElement().style.zIndex = active ? "1000" : "500";
                 setMarkerDraggingState(marker, config.draggable.includes(key));
             } else if (markerOnMap(marker)) {
@@ -1151,6 +1312,14 @@
 
         if (step === "parking" && markers.parking) {
             snapParkingOutside(markers.parking);
+        }
+
+        if (step === "floor" && markers.floorIndicator) {
+            ensureInsideBuildingPlacement("floorIndicator");
+        }
+
+        if (step === "destination" && markers.delivery) {
+            ensureInsideBuildingPlacement("delivery");
         }
 
         if (step === "entrance" && markers.entrance) {
@@ -1169,6 +1338,13 @@
         syncCoords();
         fitMapView();
     }
+
+    document.addEventListener("tuptup:floor", () => {
+        const marker = markers.floorIndicator;
+        if (!marker || !markerOnMap(marker)) return;
+        refreshFloorIndicatorDigit(marker.getElement()?.querySelector(".map-marker"));
+        refreshMarkerIcons(marker.getElement());
+    });
 
     const locateButton = mapArea.querySelector(".map-control-locate");
     const resetButton = mapArea.querySelector(".map-control-reset");
@@ -1255,6 +1431,7 @@
                 parking: [...points.parking],
                 entrance: [...points.entrance],
                 delivery: [...points.delivery],
+                floorIndicator: points.floorIndicator ? [...points.floorIndicator] : null,
             };
         },
         hasBuilding: () => hasBuilding(),
