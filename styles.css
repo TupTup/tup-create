@@ -612,16 +612,16 @@ body {
     line-height: 1.2;
 }
 
-.app--flow .elevator-floor.is-selected,
-.app--flow .elevator-floor[aria-selected="true"] {
-    background: #fff7ed;
+.app--flow .form-row.form-row--floor button.elevator-floor.is-selected,
+.app--flow .form-row.form-row--floor button.elevator-floor[aria-selected="true"] {
+    background: var(--floor);
     border-color: var(--floor);
-    color: var(--floor);
-    box-shadow: 0 4px 18px rgba(245, 158, 11, 0.14);
+    color: #ffffff;
+    box-shadow: 0 4px 18px rgba(245, 158, 11, 0.28);
 }
 
-.app--flow .elevator-floor.is-selected::before,
-.app--flow .elevator-floor[aria-selected="true"]::before {
+.app--flow .form-row.form-row--floor button.elevator-floor.is-selected::before,
+.app--flow .form-row.form-row--floor button.elevator-floor[aria-selected="true"]::before {
     content: "";
     position: absolute;
     left: 0;
@@ -634,9 +634,11 @@ body {
     pointer-events: none;
 }
 
-.app--flow .elevator-floor.is-selected .elevator-floor__caption,
-.app--flow .elevator-floor[aria-selected="true"] .elevator-floor__caption {
-    color: var(--floor);
+.app--flow .form-row.form-row--floor button.elevator-floor.is-selected .elevator-floor__digit,
+.app--flow .form-row.form-row--floor button.elevator-floor[aria-selected="true"] .elevator-floor__digit,
+.app--flow .form-row.form-row--floor button.elevator-floor.is-selected .elevator-floor__caption,
+.app--flow .form-row.form-row--floor button.elevator-floor[aria-selected="true"] .elevator-floor__caption {
+    color: #ffffff;
 }
 
 .app--flow .elevator-floor.is-pressed {
